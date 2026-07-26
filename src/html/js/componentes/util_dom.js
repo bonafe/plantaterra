@@ -8,6 +8,11 @@ export function formatarData(timestamp) {
     return new Date(timestamp).toLocaleString("pt-BR");
 }
 
+/** Para datas puras (sem hora, ex: data de plantio) — evita deslocamento de fuso horário. */
+export function formatarDataSimples(timestamp) {
+    return new Date(timestamp).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+}
+
 export function formatarMetros(valor, casasDecimais = 1) {
     if (valor === null || valor === undefined || Number.isNaN(valor)) return "—";
     return `${valor.toFixed(casasDecimais)} m`;

@@ -14,6 +14,13 @@
     box-sizing: border-box;
 }
 
+/* [hidden] deve sempre vencer, mesmo sobre classes que definem display
+   (ex: .botao-primario, .botao-secundario) — sem isso, o atributo hidden
+   é silenciosamente ignorado nesses elementos. */
+[hidden] {
+    display: none !important;
+}
+
 html, body {
     height: 100%;
     margin: 0;
@@ -243,6 +250,119 @@ mapa-projeto.mapa {
     margin-top: 10px;
 }
 
+.item-saf {
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    margin-bottom: 8px;
+}
+
+.item-saf-botao {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 12px 10px;
+    cursor: pointer;
+    color: var(--cor-texto);
+    font: inherit;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.item-saf-botao span {
+    color: var(--cor-texto-suave);
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.lista-preview-saf ul {
+    margin: 4px 0 8px 18px;
+    font-size: 0.9rem;
+    color: var(--cor-texto-suave);
+}
+
+.lista-avisos-saf {
+    color: var(--cor-perigo);
+    font-size: 0.9rem;
+    margin: 4px 0;
+    padding-left: 18px;
+}
+
+.secao-editor-saf {
+    border-top: none;
+}
+
+.editor-saf-titulo {
+    flex: 1;
+    margin: 0;
+}
+
+.editor-saf-info {
+    color: var(--cor-texto-suave);
+    font-size: 0.9rem;
+    margin: 0 0 12px 0;
+}
+
+.matriz-saf-wrapper {
+    overflow: auto;
+    max-width: 100%;
+    padding-bottom: 8px;
+}
+
+.matriz-saf {
+    display: grid;
+    gap: 4px;
+}
+
+.matriz-saf-rotulo {
+    display: flex;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+    white-space: nowrap;
+    padding-right: 10px;
+    position: sticky;
+    left: 0;
+    background: var(--cor-secundaria);
+}
+
+.quadrado-metro {
+    width: 36px;
+    height: 36px;
+    border: 2px solid var(--cor-borda);
+    border-radius: 8px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font: inherit;
+    color: var(--cor-texto);
+}
+
+.quadrado-metro-plantado {
+    border-color: var(--cor-primaria);
+    background: #e6f4ea;
+}
+
+.quadrado-metro-contagem {
+    font-weight: 700;
+    color: var(--cor-primaria-escura);
+    font-size: 0.8rem;
+}
+
+.item-planta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--cor-borda);
+    font-size: 0.9rem;
+}
+
 dialog {
     border: none;
     border-radius: var(--raio);
@@ -267,10 +387,6 @@ dialog label.campo-checkbox {
     align-items: center;
     gap: 8px;
     font-weight: normal;
-}
-
-dialog label[hidden] {
-    display: none;
 }
 
 dialog input[type="text"],
@@ -331,5 +447,12 @@ dialog select {
         background: #1a202c;
         color: #edf2f7;
         border-color: #4a5568;
+    }
+    .quadrado-metro {
+        background: #2d3748;
+        color: #edf2f7;
+    }
+    .quadrado-metro-plantado {
+        background: #22543d;
     }
 }

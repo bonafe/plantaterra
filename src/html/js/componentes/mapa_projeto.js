@@ -13,16 +13,19 @@ export class MapaProjeto extends HTMLElement {
         this._inicializado = true;
 
         this.style.display = "block";
-        this.mapa = L.map(this, { zoomControl: true }).setView([-23.0, -47.2], 15);
+        this.mapa = L.map(this, { zoomControl: true, maxZoom: 22 }).setView([-23.0, -47.2], 15);
 
         L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            maxZoom: 19,
+            maxZoom: 22,
+            maxNativeZoom: 19,
             attribution: "&copy; colaboradores do OpenStreetMap"
         }).addTo(this.mapa);
 
         this.camadaPerimetro = L.layerGroup().addTo(this.mapa);
         this.camadaLeituras = L.layerGroup().addTo(this.mapa);
         this.camadaIsolinhas = L.layerGroup().addTo(this.mapa);
+        this.camadaLinhasSaf = L.layerGroup().addTo(this.mapa);
+        this.camadaLinhaDestacada = L.layerGroup().addTo(this.mapa);
         this.camadaTrilhaEmProgresso = L.layerGroup().addTo(this.mapa);
 
         this._centralizadoAutomaticamente = false;
@@ -98,6 +101,63 @@ export class MapaProjeto extends HTMLElement {
         });
     }
 
+    definirLinhasSaf(safsComLinhas) {
+        this.camadaLinhasSaf.clearLayers();
+
+        safsComLinhas.forEach(({ saf, linhas }, indiceSaf) => {
+            const cor = CORES_ISOLINHA[indiceSaf % CORES_ISOLINHA.length];
+
+            linhas.forEach(linha => {
+                const latLngs = linha.geometria.map(p => [p.lat, p.lon]);
+                L.polyline(latLngs, { color: cor, weight: 3, opacity: 0.7 })
+                    .bindTooltip(`${saf.nome}: ${linha.nome_original}`)
+                    .addTo(this.camadaLinhasSaf);
+            });
+        });
+    }
+
+    /**
+     * Destaca um conjunto de linhas (as linhas de um SAF inteiro, durante a
+     * edição de plantas na matriz) com um marcador em cada metro que já tem
+     * planta cadastrada.
+     */
+    destacarLinhas(partes) {
+        this.camadaLinhaDestacada.clearLayers();
+
+        const todosOsPontos = [];
+
+        partes.forEach(({ linha, pontosPlantados }) => {
+            const latLngs = linha.geometria.map(p => [p.lat, p.lon]);
+            todosOsPontos.push(...latLngs);
+
+            const rotuloLinha = linha.numero_linha !== null ? `Linha ${linha.numero_linha}` : linha.nome_original;
+            L.polyline(latLngs, { color: "#e53e3e", weight: 5 })
+                .bindTooltip(rotuloLinha)
+                .addTo(this.camadaLinhaDestacada);
+
+            pontosPlantados.forEach(({ indiceMetro, coordenada, plantas }) => {
+                L.circleMarker([coordenada.lat, coordenada.lon], {
+                    radius: 6,
+                    color: "#e53e3e",
+                    fillColor: "#fff",
+                    weight: 2,
+                    fillOpacity: 1
+                })
+                    .bindTooltip(`${rotuloLinha} · metro ${indiceMetro}: ${plantas.map(p => p.especie).join(", ")}`)
+                    .addTo(this.camadaLinhaDestacada);
+            });
+        });
+
+        const bounds = L.latLngBounds(todosOsPontos);
+        if (bounds.isValid()) {
+            this.mapa.fitBounds(bounds, { padding: [40, 40] });
+        }
+    }
+
+    limparLinhasDestacadas() {
+        this.camadaLinhaDestacada.clearLayers();
+    }
+
     iniciarTrilhaEmProgresso() {
         this.camadaTrilhaEmProgresso.clearLayers();
         this._linhaTrilhaEmProgresso = L.polyline([], { color: "#e53e3e", weight: 4 }).addTo(this.camadaTrilhaEmProgresso);
@@ -125,7 +185,7 @@ export class MapaProjeto extends HTMLElement {
     }
 
     ajustarZoomParaConteudo() {
-        const grupos = [this.camadaPerimetro, this.camadaLeituras, this.camadaIsolinhas];
+        const grupos = [this.camadaPerimetro, this.camadaLeituras, this.camadaIsolinhas, this.camadaLinhasSaf];
         const bounds = L.latLngBounds([]);
         grupos.forEach(grupo => {
             grupo.eachLayer(camada => {

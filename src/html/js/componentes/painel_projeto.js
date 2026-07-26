@@ -1,6 +1,6 @@
 import { plantaTerraDB } from "../db/plantaterra_db.js";
 import { exportarProjeto } from "../db/exportador_projeto.js";
-import { exportarGeoJSON, exportarKML } from "../db/exportador_geoespacial.js";
+import { exportarGeoJSON, exportarKML, exportarKMZ } from "../db/exportador_geoespacial.js";
 import { CaptadorTrilha } from "../gps/captador_trilha.js";
 import {
     calcularAltitudeLeitura,
@@ -10,7 +10,11 @@ import {
 } from "../dominio/nivelamento.js";
 import { gerarCurvasDeNivel } from "../geo/curvas_de_nivel.js";
 import { areaPoligonoMetros2 } from "../geo/geodesia.js";
-import { escaparHtml, formatarMetros, formatarArea } from "./util_dom.js";
+import { dividirEmMetros } from "../geo/segmentador_linha.js";
+import { calcularMatrizSaf } from "../geo/matriz_saf.js";
+import { agruparPlantasPorMetro } from "../dominio/saf.js";
+import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
+import { escaparHtml, formatarMetros, formatarArea, formatarDataSimples } from "./util_dom.js";
 import "./mapa_projeto.js";
 import "./captura_gps.js";
 
@@ -49,6 +53,9 @@ export class PainelProjeto extends HTMLElement {
                         <button type="button" data-acao="exportar-kml" class="botao-secundario botao-largo">
                             KML — Google Earth (.kml)
                         </button>
+                        <button type="button" data-acao="exportar-kmz" class="botao-secundario botao-largo">
+                            KMZ completo — Google Earth (.kmz)
+                        </button>
                         <button type="button" data-acao="fechar-exportar">Fechar</button>
                     </div>
                 </dialog>
@@ -56,28 +63,52 @@ export class PainelProjeto extends HTMLElement {
                 <mapa-projeto class="mapa"></mapa-projeto>
 
                 <div class="painel-inferior">
-                    <section class="secao-perimetro">
-                        <div class="secao-cabecalho">
-                            <h2>Perímetro</h2>
-                            <span class="area-perimetro"></span>
-                        </div>
-                        <button type="button" data-acao="mapear-perimetro" class="botao-secundario botao-largo">
-                            Mapear perímetro caminhando
-                        </button>
-                    </section>
+                    <div class="secoes-padrao">
+                        <section class="secao-perimetro">
+                            <div class="secao-cabecalho">
+                                <h2>Perímetro</h2>
+                                <span class="area-perimetro"></span>
+                            </div>
+                            <button type="button" data-acao="mapear-perimetro" class="botao-secundario botao-largo">
+                                Mapear perímetro caminhando
+                            </button>
+                        </section>
 
-                    <section class="secao-estacoes">
-                        <div class="secao-cabecalho">
-                            <h2>Estações de nível</h2>
-                            <button type="button" data-acao="nova-estacao" class="botao-primario">+ Estação</button>
-                        </div>
-                        <ul class="lista-estacoes"></ul>
-                    </section>
+                        <section class="secao-estacoes">
+                            <div class="secao-cabecalho">
+                                <h2>Estações de nível</h2>
+                                <button type="button" data-acao="nova-estacao" class="botao-primario">+ Estação</button>
+                            </div>
+                            <ul class="lista-estacoes"></ul>
+                        </section>
 
-                    <section class="secao-curvas">
-                        <button type="button" data-acao="gerar-curvas" class="botao-secundario botao-largo">
-                            Gerar curvas de nível
-                        </button>
+                        <section class="secao-curvas">
+                            <button type="button" data-acao="gerar-curvas" class="botao-secundario botao-largo">
+                                Gerar curvas de nível
+                            </button>
+                        </section>
+
+                        <section class="secao-saf">
+                            <div class="secao-cabecalho">
+                                <h2>Sistemas Agroflorestais (SAF)</h2>
+                                <label class="botao-secundario botao-arquivo">
+                                    Importar KMZ/KML
+                                    <input type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" data-acao="importar-arquivo-saf" hidden />
+                                </label>
+                            </div>
+                            <ul class="lista-safs"></ul>
+                        </section>
+                    </div>
+
+                    <section class="secao-editor-saf" hidden>
+                        <div class="secao-cabecalho">
+                            <button type="button" data-acao="fechar-editor-saf" class="botao-icone" aria-label="Voltar">←</button>
+                            <h2 class="editor-saf-titulo"></h2>
+                        </div>
+                        <p class="editor-saf-info"></p>
+                        <div class="matriz-saf-wrapper">
+                            <div class="matriz-saf"></div>
+                        </div>
                     </section>
                 </div>
 
@@ -136,6 +167,38 @@ export class PainelProjeto extends HTMLElement {
                         </div>
                     </form>
                 </dialog>
+
+                <dialog class="dialogo-importar-saf">
+                    <h2>Importar SAF/linhas de plantio</h2>
+                    <div class="importar-saf-conteudo"></div>
+                    <div class="acoes-formulario">
+                        <button type="button" data-acao="confirmar-importacao-saf" class="botao-primario">Importar</button>
+                        <button type="button" data-acao="cancelar-importacao-saf">Cancelar</button>
+                    </div>
+                </dialog>
+
+                <dialog class="dialogo-planta-metro">
+                    <h2 class="planta-metro-titulo"></h2>
+                    <ul class="lista-plantas-metro"></ul>
+                    <form class="formulario-planta">
+                        <label>Espécie / nome da planta
+                            <input type="text" name="especie" required maxlength="80" />
+                        </label>
+                        <label>Quantidade (opcional)
+                            <input type="number" name="quantidade" min="1" step="1" />
+                        </label>
+                        <label>Observação (opcional)
+                            <input type="text" name="observacao" maxlength="200" />
+                        </label>
+                        <label>Data de plantio (opcional)
+                            <input type="date" name="data_plantio" />
+                        </label>
+                        <div class="acoes-formulario">
+                            <button type="submit" class="botao-primario">Adicionar planta</button>
+                            <button type="button" data-acao="fechar-planta-metro">Fechar</button>
+                        </div>
+                    </form>
+                </dialog>
             </div>
         `;
 
@@ -146,21 +209,25 @@ export class PainelProjeto extends HTMLElement {
         this._wirePerimetro();
         this._wireEstacoes();
         this._wireCurvasDeNivel();
+        this._wireSaf();
 
         await this.recarregarTudo();
     }
 
     async recarregarTudo() {
-        const [trilhaAtiva, estacoesComLeituras] = await Promise.all([
+        const [trilhaAtiva, estacoesComLeituras, safsComLinhas] = await Promise.all([
             plantaTerraDB.trilhaAtiva(this.projetoId),
-            plantaTerraDB.listarTodasLeiturasDoProjeto(this.projetoId)
+            plantaTerraDB.listarTodasLeiturasDoProjeto(this.projetoId),
+            plantaTerraDB.listarTodasLinhasDoProjeto(this.projetoId)
         ]);
 
         this.trilhaAtiva = trilhaAtiva;
         this.estacoesComLeituras = estacoesComLeituras;
+        this.safsComLinhas = safsComLinhas;
 
         this.mapaElemento.definirPoligonoPerimetro(trilhaAtiva?.poligono ?? null);
         this.mapaElemento.definirEstacoesELeituras(estacoesComLeituras);
+        this.mapaElemento.definirLinhasSaf(safsComLinhas);
         this.mapaElemento.ajustarZoomParaConteudo();
 
         const areaElemento = this.querySelector(".area-perimetro");
@@ -169,6 +236,7 @@ export class PainelProjeto extends HTMLElement {
             : "ainda não mapeado";
 
         this._renderizarListaEstacoes();
+        this._renderizarListaSafs();
     }
 
     // ---------------- Exportar ----------------
@@ -189,6 +257,10 @@ export class PainelProjeto extends HTMLElement {
         });
         this.querySelector('[data-acao="exportar-kml"]').addEventListener("click", () => {
             exportarKML(this.projetoId);
+            dialogo.close();
+        });
+        this.querySelector('[data-acao="exportar-kmz"]').addEventListener("click", () => {
+            exportarKMZ(this.projetoId);
             dialogo.close();
         });
     }
@@ -496,6 +568,273 @@ export class PainelProjeto extends HTMLElement {
             }
 
             this.mapaElemento.definirIsolinhas(isolinhas);
+        });
+    }
+
+    // ---------------- SAF / linhas de plantio ----------------
+
+    _wireSaf() {
+        const dialogoImportar = this.querySelector(".dialogo-importar-saf");
+        const conteudoImportar = this.querySelector(".importar-saf-conteudo");
+        const botaoConfirmarImportacao = this.querySelector('[data-acao="confirmar-importacao-saf"]');
+
+        this.querySelector('[data-acao="importar-arquivo-saf"]').addEventListener("change", async evento => {
+            const arquivo = evento.target.files[0];
+            evento.target.value = "";
+            if (!arquivo) return;
+
+            let analise;
+            try {
+                analise = await analisarArquivoParaImportacao(arquivo);
+            } catch (erro) {
+                alert(`Não foi possível ler o arquivo: ${erro.message}`);
+                return;
+            }
+
+            this._analiseSafPendente = analise;
+            const safsComLinhas = analise.safsEncontradas.filter(saf => saf.linhas.length > 0);
+            const totalLinhas = safsComLinhas.reduce((soma, saf) => soma + saf.linhas.length, 0);
+
+            if (safsComLinhas.length === 0) {
+                conteudoImportar.innerHTML = `<p>Nenhuma pasta cujo nome começa com "SAF" com linhas foi reconhecida neste arquivo.</p>`;
+                botaoConfirmarImportacao.hidden = true;
+            } else {
+                botaoConfirmarImportacao.hidden = false;
+                conteudoImportar.innerHTML = `
+                    <p>${safsComLinhas.length} SAF(s), ${totalLinhas} linha(s) reconhecida(s):</p>
+                    <ul class="lista-preview-saf">
+                        ${safsComLinhas.map(saf => `
+                            <li>
+                                <strong>${escaparHtml(saf.nomeOriginal)}</strong>
+                                <ul>
+                                    ${saf.linhas.map(linha => `
+                                        <li>
+                                            ${escaparHtml(linha.nomeOriginal)} —
+                                            calculado: ${linha.comprimentoCalculadoM.toFixed(1)} m
+                                            ${linha.metrosDeclarados !== null ? `(declarado: ${linha.metrosDeclarados} m)` : ""}
+                                        </li>
+                                    `).join("")}
+                                </ul>
+                            </li>
+                        `).join("")}
+                    </ul>
+                `;
+            }
+
+            if (analise.avisos.length > 0) {
+                conteudoImportar.innerHTML += `
+                    <p><strong>Avisos:</strong></p>
+                    <ul class="lista-avisos-saf">${analise.avisos.map(a => `<li>${escaparHtml(a)}</li>`).join("")}</ul>
+                `;
+            }
+
+            dialogoImportar.showModal();
+        });
+
+        this.querySelector('[data-acao="cancelar-importacao-saf"]').addEventListener("click", () => {
+            dialogoImportar.close();
+        });
+
+        botaoConfirmarImportacao.addEventListener("click", async () => {
+            if (!this._analiseSafPendente) return;
+            await importarParaProjeto(this.projetoId, this._analiseSafPendente.safsEncontradas);
+            this._analiseSafPendente = null;
+            dialogoImportar.close();
+            await this.recarregarTudo();
+        });
+
+        this._wireEditorSaf();
+    }
+
+    _renderizarListaSafs() {
+        const listaElemento = this.querySelector(".lista-safs");
+
+        if (this.safsComLinhas.length === 0) {
+            listaElemento.innerHTML = `<li class="lista-vazia">Nenhum SAF importado ainda.</li>`;
+            return;
+        }
+
+        listaElemento.innerHTML = this.safsComLinhas.map(({ saf, linhas }) => {
+            const comprimentoTotal = linhas.reduce((soma, l) => soma + l.comprimento_calculado_m, 0);
+            return `
+                <li class="item-saf" data-id="${saf.id}">
+                    <button type="button" class="item-saf-botao" data-acao="abrir-saf">
+                        <strong>${escaparHtml(saf.nome)}</strong>
+                        <span>${linhas.length} linha(s) · ${comprimentoTotal.toFixed(0)} m</span>
+                    </button>
+                </li>
+            `;
+        }).join("");
+
+        listaElemento.querySelectorAll('[data-acao="abrir-saf"]').forEach(botao => {
+            botao.addEventListener("click", () => {
+                const safId = botao.closest(".item-saf").dataset.id;
+                const { saf } = this.safsComLinhas.find(item => item.saf.id === safId);
+                this._abrirEditorSaf(saf);
+            });
+        });
+    }
+
+    /**
+     * Matriz com todas as linhas de um SAF de uma vez, alinhadas por posição
+     * geográfica real (ver docs/especificacao.md secao 14.5a) — uma linha
+     * dividida em partes (ex: "Linha 3 Norte"/"Linha 3 Sul") aparece como uma
+     * única fileira da matriz, com o vão real entre as partes em branco.
+     */
+    _wireEditorSaf() {
+        const secaoNormal = this.querySelector(".secoes-padrao");
+        const secaoEditor = this.querySelector(".secao-editor-saf");
+        const tituloEditor = this.querySelector(".editor-saf-titulo");
+        const infoEditor = this.querySelector(".editor-saf-info");
+        const matrizElemento = this.querySelector(".matriz-saf");
+
+        const dialogoPlanta = this.querySelector(".dialogo-planta-metro");
+        const tituloPlanta = this.querySelector(".planta-metro-titulo");
+        const listaPlantasMetro = this.querySelector(".lista-plantas-metro");
+        const formularioPlanta = this.querySelector(".formulario-planta");
+
+        this.querySelector('[data-acao="fechar-editor-saf"]').addEventListener("click", () => {
+            secaoEditor.hidden = true;
+            secaoNormal.hidden = false;
+            this.mapaElemento.limparLinhasDestacadas();
+            this._safEmEdicao = null;
+        });
+
+        this.querySelector('[data-acao="fechar-planta-metro"]').addEventListener("click", () => dialogoPlanta.close());
+
+        formularioPlanta.addEventListener("submit", async evento => {
+            evento.preventDefault();
+            const dados = new FormData(formularioPlanta);
+            const dataPlantioTexto = dados.get("data_plantio");
+            let dataPlantio = null;
+            if (dataPlantioTexto) {
+                const [ano, mes, dia] = dataPlantioTexto.split("-").map(Number);
+                dataPlantio = Date.UTC(ano, mes - 1, dia);
+            }
+
+            await plantaTerraDB.criarPlanta({
+                linhaId: this._linhaAtualParaPlanta.id,
+                indiceMetro: this._metroEmEdicao,
+                especie: dados.get("especie").trim(),
+                quantidade: dados.get("quantidade") ? Number(dados.get("quantidade")) : null,
+                observacao: dados.get("observacao").trim() || null,
+                dataPlantio
+            });
+
+            formularioPlanta.reset();
+            await this._recarregarEditorSaf();
+            this._abrirDialogoMetro(this._linhaAtualParaPlanta, this._metroEmEdicao);
+        });
+
+        this._abrirEditorSaf = async saf => {
+            this._safEmEdicao = saf;
+            secaoNormal.hidden = true;
+            secaoEditor.hidden = false;
+            await this._recarregarEditorSaf();
+        };
+
+        this._recarregarEditorSaf = async () => {
+            const saf = this._safEmEdicao;
+            const linhas = await plantaTerraDB.listarLinhasDaSaf(saf.id);
+            const plantasPorLinha = await Promise.all(linhas.map(l => plantaTerraDB.listarPlantasDaLinha(l.id)));
+
+            this._linhasDoSafEmEdicaoPorId = new Map(linhas.map(l => [l.id, l]));
+            this._plantasPorLinhaEmEdicao = new Map(linhas.map((l, indice) => [l.id, plantasPorLinha[indice]]));
+
+            const matriz = calcularMatrizSaf(linhas);
+            const totalPlantas = plantasPorLinha.reduce((soma, lista) => soma + lista.length, 0);
+
+            tituloEditor.textContent = saf.nome;
+            infoEditor.textContent =
+                `${linhas.length} linha(s) · ${matriz.linhasLogicas.length} fileira(s) na matriz · ` +
+                `${totalPlantas} planta(s) cadastrada(s)`;
+
+            this._renderizarMatriz(matriz, matrizElemento);
+
+            const partesParaMapa = linhas.map(linha => {
+                const plantasPorMetro = agruparPlantasPorMetro(this._plantasPorLinhaEmEdicao.get(linha.id));
+                const { segmentos } = dividirEmMetros(linha.geometria);
+                const pontosPlantados = [...plantasPorMetro.entries()]
+                    .map(([indiceMetro, plantasDoMetro]) => ({
+                        indiceMetro,
+                        coordenada: segmentos[indiceMetro]?.meio,
+                        plantas: plantasDoMetro
+                    }))
+                    .filter(ponto => ponto.coordenada);
+                return { linha, pontosPlantados };
+            });
+            this.mapaElemento.destacarLinhas(partesParaMapa);
+        };
+
+        this._abrirDialogoMetro = (linha, indiceMetro) => {
+            this._linhaAtualParaPlanta = linha;
+            this._metroEmEdicao = indiceMetro;
+            const plantasDoMetro = (this._plantasPorLinhaEmEdicao.get(linha.id) ?? [])
+                .filter(p => p.indice_metro === indiceMetro);
+
+            const rotuloLinha = linha.numero_linha !== null ? `Linha ${linha.numero_linha}` : linha.nome_original;
+            tituloPlanta.textContent = `${rotuloLinha} — metro ${indiceMetro}`;
+            listaPlantasMetro.innerHTML = plantasDoMetro.length === 0
+                ? `<li class="lista-vazia">Nenhuma planta cadastrada neste metro ainda.</li>`
+                : plantasDoMetro.map(planta => `
+                    <li class="item-planta" data-id="${planta.id}">
+                        <span>
+                            <strong>${escaparHtml(planta.especie)}</strong>
+                            ${planta.quantidade ? ` (x${planta.quantidade})` : ""}
+                            ${planta.observacao ? ` — ${escaparHtml(planta.observacao)}` : ""}
+                            ${planta.data_plantio ? ` — plantado em ${formatarDataSimples(planta.data_plantio)}` : ""}
+                        </span>
+                        <button type="button" class="botao-excluir" data-acao="remover-planta" aria-label="Remover">🗑</button>
+                    </li>
+                `).join("");
+
+            listaPlantasMetro.querySelectorAll('[data-acao="remover-planta"]').forEach(botao => {
+                botao.addEventListener("click", async () => {
+                    const id = botao.closest(".item-planta").dataset.id;
+                    await plantaTerraDB.removerPlanta(id);
+                    await this._recarregarEditorSaf();
+                    this._abrirDialogoMetro(linha, indiceMetro);
+                });
+            });
+
+            formularioPlanta.reset();
+            dialogoPlanta.showModal();
+        };
+    }
+
+    _renderizarMatriz(matriz, matrizElemento) {
+        const numeroColunas = Math.max(matriz.colunaMaximaGlobal - matriz.colunaMinimaGlobal + 1, 1);
+        matrizElemento.style.gridTemplateColumns = `minmax(110px, max-content) repeat(${numeroColunas}, 36px)`;
+        matrizElemento.style.gridTemplateRows = `repeat(${matriz.linhasLogicas.length}, 36px)`;
+
+        let html = "";
+        matriz.linhasLogicas.forEach((linhaLogica, indiceLinha) => {
+            const linha = indiceLinha + 1;
+            html += `<div class="matriz-saf-rotulo" style="grid-row:${linha};grid-column:1">${escaparHtml(linhaLogica.nomeExibicao)}</div>`;
+
+            for (const quadrado of linhaLogica.quadrados) {
+                const plantasDoMetro = (this._plantasPorLinhaEmEdicao.get(quadrado.linhaId) ?? [])
+                    .filter(p => p.indice_metro === quadrado.indiceMetro);
+                const coluna = quadrado.colunaGlobal - matriz.colunaMinimaGlobal + 2;
+                const classe = plantasDoMetro.length > 0 ? "quadrado-metro quadrado-metro-plantado" : "quadrado-metro";
+
+                html += `
+                    <button type="button" class="${classe}" style="grid-row:${linha};grid-column:${coluna}"
+                        data-linha-id="${quadrado.linhaId}" data-indice-metro="${quadrado.indiceMetro}"
+                        title="${escaparHtml(linhaLogica.nomeExibicao)} · metro ${quadrado.indiceMetro}">
+                        ${plantasDoMetro.length > 0 ? `<span class="quadrado-metro-contagem">${plantasDoMetro.length}</span>` : ""}
+                    </button>
+                `;
+            }
+        });
+
+        matrizElemento.innerHTML = html;
+
+        matrizElemento.querySelectorAll(".quadrado-metro").forEach(botao => {
+            botao.addEventListener("click", () => {
+                const linha = this._linhasDoSafEmEdicaoPorId.get(botao.dataset.linhaId);
+                this._abrirDialogoMetro(linha, Number(botao.dataset.indiceMetro));
+            });
         });
     }
 }

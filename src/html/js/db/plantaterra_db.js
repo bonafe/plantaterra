@@ -1,7 +1,7 @@
 import { DBBase } from "./db_base.js";
 
 const NOME_BANCO = "PlantaTerraDB";
-const VERSAO = 1;
+const VERSAO = 2;
 
 const funcoesDeMigracao = [
     banco => {
@@ -16,6 +16,17 @@ const funcoesDeMigracao = [
 
         const osLeitura = banco.createObjectStore("leitura_nivel", { keyPath: "id" });
         osLeitura.createIndex("index_estacao_id", "estacao_id", { unique: false });
+    },
+    banco => {
+        const osSaf = banco.createObjectStore("saf", { keyPath: "id" });
+        osSaf.createIndex("index_projeto_id", "projeto_id", { unique: false });
+
+        const osLinha = banco.createObjectStore("linha_plantio", { keyPath: "id" });
+        osLinha.createIndex("index_saf_id", "saf_id", { unique: false });
+        osLinha.createIndex("index_projeto_id", "projeto_id", { unique: false });
+
+        const osPlanta = banco.createObjectStore("planta_linha", { keyPath: "id" });
+        osPlanta.createIndex("index_linha_id", "linha_id", { unique: false });
     }
 ];
 
@@ -58,19 +69,26 @@ class PlantaTerraDB extends DBBase {
     }
 
     async excluirProjeto(id) {
-        const [trilhas, estacoes] = await Promise.all([
+        const [trilhas, estacoes, safsComLinhas] = await Promise.all([
             this.listarTrilhas(id),
-            this.listarEstacoes(id)
+            this.listarEstacoes(id),
+            this.listarTodasLinhasDoProjeto(id)
         ]);
 
         const leiturasPorEstacao = await Promise.all(
             estacoes.map(estacao => this.listarLeituras(estacao.id))
         );
 
+        const todasLinhas = safsComLinhas.flatMap(({ linhas }) => linhas);
+        const plantasPorLinha = await Promise.all(todasLinhas.map(linha => this.listarPlantasDaLinha(linha.id)));
+
         await Promise.all([
             this.removerVarios("trilha_perimetro", trilhas.map(t => t.id)),
             this.removerVarios("estacao_nivel", estacoes.map(e => e.id)),
-            this.removerVarios("leitura_nivel", leiturasPorEstacao.flat().map(l => l.id))
+            this.removerVarios("leitura_nivel", leiturasPorEstacao.flat().map(l => l.id)),
+            this.removerVarios("saf", safsComLinhas.map(({ saf }) => saf.id)),
+            this.removerVarios("linha_plantio", todasLinhas.map(l => l.id)),
+            this.removerVarios("planta_linha", plantasPorLinha.flat().map(p => p.id))
         ]);
 
         return this.remover("projeto", id);
@@ -157,6 +175,121 @@ class PlantaTerraDB extends DBBase {
         const estacoes = await this.listarEstacoes(projetoId);
         const listas = await Promise.all(estacoes.map(e => this.listarLeituras(e.id)));
         return estacoes.map((estacao, indice) => ({ estacao, leituras: listas[indice] }));
+    }
+
+    // ---- saf ----
+
+    async criarSaf({ projetoId, nome, descricao = "", origem = "manual" }) {
+        const agora = Date.now();
+        const saf = {
+            id: this.gerarId(),
+            projeto_id: projetoId,
+            nome,
+            descricao,
+            origem,
+            criado_em: agora,
+            atualizado_em: agora
+        };
+        await this.salvar("saf", saf);
+        return saf;
+    }
+
+    async atualizarSaf(saf) {
+        saf.atualizado_em = Date.now();
+        return this.salvar("saf", saf);
+    }
+
+    async listarSafs(projetoId) {
+        const safs = await this.obterTodos("saf", "index_projeto_id", projetoId);
+        return safs.sort((a, b) => a.criado_em - b.criado_em);
+    }
+
+    async obterSafPorNome(projetoId, nome) {
+        const safs = await this.listarSafs(projetoId);
+        return safs.find(s => s.nome === nome) || null;
+    }
+
+    // ---- linha_plantio ----
+
+    async criarLinha({
+        safId,
+        projetoId,
+        nomeOriginal,
+        numeroLinha = null,
+        descricao = "",
+        metrosLinearesDeclarado = null,
+        comprimentoCalculadoM,
+        geometria,
+        origem = "manual"
+    }) {
+        const agora = Date.now();
+        const linha = {
+            id: this.gerarId(),
+            saf_id: safId,
+            projeto_id: projetoId,
+            nome_original: nomeOriginal,
+            numero_linha: numeroLinha,
+            descricao,
+            metros_lineares_declarado: metrosLinearesDeclarado,
+            comprimento_calculado_m: comprimentoCalculadoM,
+            geometria,
+            origem,
+            criado_em: agora,
+            atualizado_em: agora
+        };
+        await this.salvar("linha_plantio", linha);
+        return linha;
+    }
+
+    async atualizarLinha(linha) {
+        linha.atualizado_em = Date.now();
+        return this.salvar("linha_plantio", linha);
+    }
+
+    async listarLinhasDaSaf(safId) {
+        const linhas = await this.obterTodos("linha_plantio", "index_saf_id", safId);
+        return linhas.sort((a, b) => (a.numero_linha ?? Infinity) - (b.numero_linha ?? Infinity));
+    }
+
+    async obterLinha(id) {
+        return this.obterPorChave("linha_plantio", id);
+    }
+
+    async obterLinhaPorNome(safId, nomeOriginal) {
+        const linhas = await this.listarLinhasDaSaf(safId);
+        return linhas.find(l => l.nome_original === nomeOriginal) || null;
+    }
+
+    async listarTodasLinhasDoProjeto(projetoId) {
+        const safs = await this.listarSafs(projetoId);
+        const listas = await Promise.all(safs.map(saf => this.listarLinhasDaSaf(saf.id)));
+        return safs.map((saf, indice) => ({ saf, linhas: listas[indice] }));
+    }
+
+    // ---- planta_linha ----
+
+    async criarPlanta({ linhaId, indiceMetro, especie, quantidade = null, observacao = null, dataPlantio = null }) {
+        const planta = {
+            id: this.gerarId(),
+            linha_id: linhaId,
+            indice_metro: indiceMetro,
+            especie,
+            quantidade,
+            observacao,
+            data_plantio: dataPlantio,
+            criado_em: Date.now()
+        };
+        await this.salvar("planta_linha", planta);
+        return planta;
+    }
+
+    async removerPlanta(id) {
+        return this.remover("planta_linha", id);
+    }
+
+    async listarPlantasDaLinha(linhaId) {
+        const plantas = await this.obterTodos("planta_linha", "index_linha_id", linhaId);
+        return plantas.sort((a, b) => a.indice_metro - b.indice_metro);
     }
 }
 

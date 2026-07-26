@@ -1,4 +1,4 @@
-const VERSAO_CACHE = "plantaterra-v2";
+const VERSAO_CACHE = "plantaterra-v4";
 const CACHE_TILES = "plantaterra-tiles-v1";
 
 const ARQUIVOS_DO_APP = [
@@ -17,13 +17,18 @@ const ARQUIVOS_DO_APP = [
     "./js/db/exportador_geoespacial.js",
     "./js/db/plantaterra_db.js",
     "./js/dominio/nivelamento.js",
+    "./js/dominio/saf.js",
     "./js/geo/curvas_de_nivel.js",
     "./js/geo/douglas_peucker.js",
     "./js/geo/geodesia.js",
     "./js/geo/idw.js",
     "./js/geo/marching_squares.js",
+    "./js/geo/segmentador_linha.js",
+    "./js/geo/matriz_saf.js",
     "./js/gps/captador_coordenada.js",
     "./js/gps/captador_trilha.js",
+    "./js/kml/leitor_kml.js",
+    "./js/kml/importador_saf.js",
     "./icons/icone-192.png",
     "./icons/icone-512.png",
     "./vendor/leaflet/leaflet.css",
@@ -32,7 +37,8 @@ const ARQUIVOS_DO_APP = [
     "./vendor/leaflet/images/layers-2x.png",
     "./vendor/leaflet/images/marker-icon.png",
     "./vendor/leaflet/images/marker-icon-2x.png",
-    "./vendor/leaflet/images/marker-shadow.png"
+    "./vendor/leaflet/images/marker-shadow.png",
+    "./vendor/fflate/fflate.js"
 ];
 
 self.addEventListener("install", evento => {

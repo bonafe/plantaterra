@@ -2,20 +2,24 @@ import { plantaTerraDB } from "./plantaterra_db.js";
 import { baixarArquivo, slug } from "./exportador_projeto.js";
 import { consolidarPontosDoProjeto } from "../dominio/nivelamento.js";
 import { gerarCurvasDeNivel } from "../geo/curvas_de_nivel.js";
+import { dividirEmMetros } from "../geo/segmentador_linha.js";
+import { agruparPlantasPorMetro } from "../dominio/saf.js";
 
 const CORES_ISOLINHA = ["#2b6cb0", "#2f855a", "#b7791f", "#c05621", "#9b2c2c", "#553c9a"];
 
 /**
  * Exportações interoperáveis com GIS (QGIS, Google Earth etc). Diferente de
  * exportador_projeto.js, que gera um backup fiel para reimportar no próprio
- * app, aqui o formato é padrão (GeoJSON/KML) e as curvas de nível são
- * recalculadas na hora a partir das leituras salvas.
+ * app, aqui o formato é padrão (GeoJSON/KML/KMZ) e as curvas de nível e os
+ * marcadores de planta por metro são recalculados na hora a partir dos dados
+ * salvos (ver docs/especificacao.md secao 14.4).
  */
 async function coletarDadosProjeto(projetoId) {
-    const [projeto, trilhaAtiva, estacoesComLeituras] = await Promise.all([
+    const [projeto, trilhaAtiva, estacoesComLeituras, safsComLinhasBrutas] = await Promise.all([
         plantaTerraDB.obterProjeto(projetoId),
         plantaTerraDB.trilhaAtiva(projetoId),
-        plantaTerraDB.listarTodasLeiturasDoProjeto(projetoId)
+        plantaTerraDB.listarTodasLeiturasDoProjeto(projetoId),
+        plantaTerraDB.listarTodasLinhasDoProjeto(projetoId)
     ]);
 
     if (!projeto) {
@@ -26,7 +30,34 @@ async function coletarDadosProjeto(projetoId) {
     const poligono = trilhaAtiva?.poligono?.length >= 3 ? trilhaAtiva.poligono : null;
     const { isolinhas } = pontos.length >= 3 ? gerarCurvasDeNivel(pontos, poligono) : { isolinhas: [] };
 
-    return { projeto, poligono, estacoesComLeituras, isolinhas };
+    const safsComLinhas = await Promise.all(
+        safsComLinhasBrutas.map(async ({ saf, linhas }) => ({
+            saf,
+            linhas: await Promise.all(linhas.map(async linha => ({ linha, ...(await pontosPlantadosDaLinha(linha)) })))
+        }))
+    );
+
+    return { projeto, poligono, estacoesComLeituras, isolinhas, safsComLinhas };
+}
+
+async function pontosPlantadosDaLinha(linha) {
+    const plantas = await plantaTerraDB.listarPlantasDaLinha(linha.id);
+    if (plantas.length === 0) {
+        return { plantas: [], pontosPlantados: [] };
+    }
+
+    const { segmentos } = dividirEmMetros(linha.geometria);
+    const plantasPorMetro = agruparPlantasPorMetro(plantas);
+
+    const pontosPlantados = [...plantasPorMetro.entries()]
+        .map(([indiceMetro, plantasDoMetro]) => {
+            const segmento = segmentos[indiceMetro];
+            return segmento ? { indiceMetro, coordenada: segmento.meio, plantas: plantasDoMetro } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.indiceMetro - b.indiceMetro);
+
+    return { plantas, pontosPlantados };
 }
 
 export async function exportarGeoJSON(projetoId) {
@@ -45,7 +76,14 @@ export async function exportarKML(projetoId) {
     baixarArquivo(kml, `plantaterra-${slug(dados.projeto.nome)}.kml`, "application/vnd.google-earth.kml+xml");
 }
 
-function construirGeoJSON({ projeto, poligono, estacoesComLeituras, isolinhas }) {
+export async function exportarKMZ(projetoId) {
+    const dados = await coletarDadosProjeto(projetoId);
+    const kml = construirKML(dados);
+    const zip = fflate.zipSync({ "doc.kml": fflate.strToU8(kml) });
+    baixarArquivo(zip, `plantaterra-${slug(dados.projeto.nome)}.kmz`, "application/vnd.google-earth.kmz");
+}
+
+function construirGeoJSON({ projeto, poligono, estacoesComLeituras, isolinhas, safsComLinhas }) {
     const features = [];
 
     if (poligono) {
@@ -95,10 +133,45 @@ function construirGeoJSON({ projeto, poligono, estacoesComLeituras, isolinhas })
         });
     }
 
+    for (const { saf, linhas } of safsComLinhas) {
+        for (const { linha, pontosPlantados } of linhas) {
+            features.push({
+                type: "Feature",
+                properties: {
+                    tipo: "linha_plantio",
+                    saf: saf.nome,
+                    numero_linha: linha.numero_linha,
+                    descricao: linha.descricao,
+                    comprimento_m: linha.comprimento_calculado_m
+                },
+                geometry: { type: "LineString", coordinates: linha.geometria.map(p => [p.lon, p.lat]) }
+            });
+
+            for (const { indiceMetro, coordenada, plantas } of pontosPlantados) {
+                features.push({
+                    type: "Feature",
+                    properties: {
+                        tipo: "planta",
+                        saf: saf.nome,
+                        linha: linha.numero_linha ?? linha.nome_original,
+                        metro: indiceMetro,
+                        plantas: plantas.map(p => ({
+                            especie: p.especie,
+                            quantidade: p.quantidade,
+                            observacao: p.observacao,
+                            data_plantio: p.data_plantio
+                        }))
+                    },
+                    geometry: { type: "Point", coordinates: [coordenada.lon, coordenada.lat] }
+                });
+            }
+        }
+    }
+
     return { type: "FeatureCollection", features };
 }
 
-function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas }) {
+function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas, safsComLinhas }) {
     const partes = [];
 
     partes.push('<?xml version="1.0" encoding="UTF-8"?>');
@@ -156,6 +229,40 @@ function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas }) {
             </Placemark>
         `);
     });
+
+    for (const { saf, linhas } of safsComLinhas) {
+        partes.push(`<Folder><name>${escaparXml(saf.nome)}</name>`);
+
+        for (const { linha, pontosPlantados } of linhas) {
+            const coordenadasLinha = linha.geometria.map(p => `${p.lon},${p.lat},0`).join(" ");
+            const totalPlantas = pontosPlantados.reduce((soma, p) => soma + p.plantas.length, 0);
+
+            partes.push(`
+                <Placemark>
+                    <name>${escaparXml(linha.nome_original)}</name>
+                    <description>Comprimento: ${linha.comprimento_calculado_m.toFixed(1)} m · ${totalPlantas} planta(s) cadastrada(s)</description>
+                    <Style><LineStyle><color>ff2f855a</color><width>3</width></LineStyle></Style>
+                    <LineString><coordinates>${coordenadasLinha}</coordinates></LineString>
+                </Placemark>
+            `);
+
+            for (const { indiceMetro, coordenada, plantas } of pontosPlantados) {
+                const listaPlantas = plantas
+                    .map(p => escaparXml(`${p.especie}${p.quantidade ? ` (x${p.quantidade})` : ""}${p.observacao ? ` — ${p.observacao}` : ""}`))
+                    .join("<br/>");
+
+                partes.push(`
+                    <Placemark>
+                        <name>Metro ${indiceMetro}: ${escaparXml(plantas.map(p => p.especie).join(", "))}</name>
+                        <description>${listaPlantas}</description>
+                        <Point><coordinates>${coordenada.lon},${coordenada.lat},0</coordinates></Point>
+                    </Placemark>
+                `);
+            }
+        }
+
+        partes.push("</Folder>");
+    }
 
     partes.push("</Document></kml>");
     return partes.join("\n");
