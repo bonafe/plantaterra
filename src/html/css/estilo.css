@@ -375,6 +375,28 @@ dialog::backdrop {
     background: rgba(0, 0, 0, 0.5);
 }
 
+/*
+ * "Bottom sheet": diferente dos demais diálogos (centralizados, cobrindo a
+ * tela), este fica colado embaixo e sem escurecer o fundo — o mapa continua
+ * visível e centralizado no metro que está sendo editado (ver
+ * mapa_projeto.js#destacarSegmentoAtivo).
+ */
+dialog.dialogo-planta-metro {
+    position: fixed;
+    inset: auto 0 0 0;
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 65vh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+}
+
+dialog.dialogo-planta-metro::backdrop {
+    background: transparent;
+}
+
 dialog label {
     display: block;
     margin: 12px 0;

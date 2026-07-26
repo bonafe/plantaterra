@@ -766,9 +766,14 @@ export class PainelProjeto extends HTMLElement {
             this.mapaElemento.destacarLinhas(partesParaMapa);
         };
 
-        this._abrirDialogoMetro = (linha, indiceMetro) => {
+        this._abrirDialogoMetro = (linha, indiceMetro, coordenada) => {
             this._linhaAtualParaPlanta = linha;
             this._metroEmEdicao = indiceMetro;
+            if (coordenada) {
+                this._coordenadaMetroAtual = coordenada;
+            }
+            this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual);
+
             const plantasDoMetro = (this._plantasPorLinhaEmEdicao.get(linha.id) ?? [])
                 .filter(p => p.indice_metro === indiceMetro);
 
@@ -807,7 +812,9 @@ export class PainelProjeto extends HTMLElement {
         matrizElemento.style.gridTemplateColumns = `minmax(110px, max-content) repeat(${numeroColunas}, 36px)`;
         matrizElemento.style.gridTemplateRows = `repeat(${matriz.linhasLogicas.length}, 36px)`;
 
+        const coordenadaPorCelula = new Map();
         let html = "";
+
         matriz.linhasLogicas.forEach((linhaLogica, indiceLinha) => {
             const linha = indiceLinha + 1;
             html += `<div class="matriz-saf-rotulo" style="grid-row:${linha};grid-column:1">${escaparHtml(linhaLogica.nomeExibicao)}</div>`;
@@ -817,6 +824,8 @@ export class PainelProjeto extends HTMLElement {
                     .filter(p => p.indice_metro === quadrado.indiceMetro);
                 const coluna = quadrado.colunaGlobal - matriz.colunaMinimaGlobal + 2;
                 const classe = plantasDoMetro.length > 0 ? "quadrado-metro quadrado-metro-plantado" : "quadrado-metro";
+                const chaveCelula = `${quadrado.linhaId}|${quadrado.indiceMetro}`;
+                coordenadaPorCelula.set(chaveCelula, quadrado.coordenada);
 
                 html += `
                     <button type="button" class="${classe}" style="grid-row:${linha};grid-column:${coluna}"
@@ -833,7 +842,9 @@ export class PainelProjeto extends HTMLElement {
         matrizElemento.querySelectorAll(".quadrado-metro").forEach(botao => {
             botao.addEventListener("click", () => {
                 const linha = this._linhasDoSafEmEdicaoPorId.get(botao.dataset.linhaId);
-                this._abrirDialogoMetro(linha, Number(botao.dataset.indiceMetro));
+                const indiceMetro = Number(botao.dataset.indiceMetro);
+                const coordenada = coordenadaPorCelula.get(`${botao.dataset.linhaId}|${indiceMetro}`);
+                this._abrirDialogoMetro(linha, indiceMetro, coordenada);
             });
         });
     }

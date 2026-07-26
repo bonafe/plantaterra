@@ -267,7 +267,7 @@ Essa é uma aproximação geométrica (linhas raramente são perfeitamente paral
 3. Ao abrir um SAF, a interface mostra a **matriz completa** (§14.5a):
    - Todas as linhas do SAF destacadas no mapa de uma vez, com um marcador em cada metro que já tem planta cadastrada.
    - Uma **grade (matriz)** com uma fileira por linha lógica e uma coluna por metro, alinhadas entre si — linhas divididas (ex: "Linha 3" em duas partes) aparecem como uma única fileira, com o vão real em branco.
-   - Tocar em um quadrado abre um diálogo: lista as plantas já cadastradas naquele metro daquela linha específica (com opção de remover) e um formulário para adicionar uma nova (espécie/nome, quantidade opcional, observação opcional, data de plantio opcional).
+   - Tocar em um quadrado abre um diálogo de planta em formato **"bottom sheet"** (colado na parte de baixo da tela, sem escurecer o mapa, diferente dos demais diálogos do app) — lista as plantas já cadastradas naquele metro daquela linha específica (com opção de remover) e um formulário para adicionar uma nova (espécie/nome, quantidade opcional, observação opcional, data de plantio opcional). Ao abrir, o mapa centraliza (sem mudar o zoom) num marcador amarelo diferenciado exatamente nesse metro, para ficar claro onde ele fica dentro da linha — como o mapa continua visível, isso acontece no mesmo instante em que o diálogo abre, sem etapa extra.
 4. Botão **"Exportar"** do projeto (mesmo menu do §8) passa a incluir a opção **KMZ completo**, contendo tudo (perímetro, curvas de nível, SAFs/linhas, plantas por metro).
 
 ### 14.7 Modelo de dados adicional

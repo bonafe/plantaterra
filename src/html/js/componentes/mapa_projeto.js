@@ -26,6 +26,7 @@ export class MapaProjeto extends HTMLElement {
         this.camadaIsolinhas = L.layerGroup().addTo(this.mapa);
         this.camadaLinhasSaf = L.layerGroup().addTo(this.mapa);
         this.camadaLinhaDestacada = L.layerGroup().addTo(this.mapa);
+        this.camadaSegmentoAtivo = L.layerGroup().addTo(this.mapa);
         this.camadaTrilhaEmProgresso = L.layerGroup().addTo(this.mapa);
 
         this._centralizadoAutomaticamente = false;
@@ -156,6 +157,26 @@ export class MapaProjeto extends HTMLElement {
 
     limparLinhasDestacadas() {
         this.camadaLinhaDestacada.clearLayers();
+        this.camadaSegmentoAtivo.clearLayers();
+    }
+
+    /**
+     * Destaca o metro específico que está sendo editado (célula clicada na
+     * matriz) com um marcador diferenciado, e centraliza o mapa nele — sem
+     * mudar o zoom, para manter a noção de onde ele fica dentro da linha.
+     */
+    destacarSegmentoAtivo(coordenada) {
+        this.camadaSegmentoAtivo.clearLayers();
+
+        L.circleMarker([coordenada.lat, coordenada.lon], {
+            radius: 11,
+            color: "#f6e05e",
+            weight: 3,
+            fillColor: "#f6e05e",
+            fillOpacity: 0.5
+        }).addTo(this.camadaSegmentoAtivo);
+
+        this.mapa.panTo([coordenada.lat, coordenada.lon]);
     }
 
     iniciarTrilhaEmProgresso() {
