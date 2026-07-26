@@ -22,7 +22,7 @@ export async function exportarProjeto(projetoId) {
     };
 
     const nomeArquivo = `plantaterra-${slug(projeto.nome)}-${new Date().toISOString().slice(0, 10)}.json`;
-    baixarArquivoJson(pacote, nomeArquivo);
+    baixarArquivo(JSON.stringify(pacote, null, 2), nomeArquivo, "application/json");
     return pacote;
 }
 
@@ -78,8 +78,8 @@ export async function importarProjeto(arquivoOuTexto) {
     return projetoNovo;
 }
 
-function baixarArquivoJson(objeto, nomeArquivo) {
-    const blob = new Blob([JSON.stringify(objeto, null, 2)], { type: "application/json" });
+export function baixarArquivo(conteudo, nomeArquivo, tipoMime) {
+    const blob = new Blob([conteudo], { type: tipoMime });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -88,7 +88,7 @@ function baixarArquivoJson(objeto, nomeArquivo) {
     URL.revokeObjectURL(url);
 }
 
-function slug(texto) {
+export function slug(texto) {
     return texto
         .normalize("NFD")
         .replace(/[̀-ͯ]/g, "")

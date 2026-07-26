@@ -293,6 +293,11 @@ dialog select {
     margin-top: 16px;
 }
 
+.acoes-formulario-coluna {
+    flex-direction: column;
+    align-items: stretch;
+}
+
 .captura-gps-qualidade {
     font-weight: 600;
 }

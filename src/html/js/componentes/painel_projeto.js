@@ -1,5 +1,6 @@
 import { plantaTerraDB } from "../db/plantaterra_db.js";
 import { exportarProjeto } from "../db/exportador_projeto.js";
+import { exportarGeoJSON, exportarKML } from "../db/exportador_geoespacial.js";
 import { CaptadorTrilha } from "../gps/captador_trilha.js";
 import {
     calcularAltitudeLeitura,
@@ -33,8 +34,24 @@ export class PainelProjeto extends HTMLElement {
                 <header class="cabecalho-app cabecalho-projeto">
                     <a href="#/" class="botao-voltar" aria-label="Voltar">←</a>
                     <h1>${escaparHtml(this.projeto.nome)}</h1>
-                    <button type="button" data-acao="exportar" class="botao-icone" aria-label="Exportar projeto">⭳</button>
+                    <button type="button" data-acao="abrir-exportar" class="botao-icone" aria-label="Exportar projeto">⭳</button>
                 </header>
+
+                <dialog class="dialogo-exportar">
+                    <h2>Exportar projeto</h2>
+                    <div class="acoes-formulario acoes-formulario-coluna">
+                        <button type="button" data-acao="exportar-backup" class="botao-secundario botao-largo">
+                            Backup do projeto (.json)
+                        </button>
+                        <button type="button" data-acao="exportar-geojson" class="botao-secundario botao-largo">
+                            GeoJSON — QGIS, Mapbox etc. (.geojson)
+                        </button>
+                        <button type="button" data-acao="exportar-kml" class="botao-secundario botao-largo">
+                            KML — Google Earth (.kml)
+                        </button>
+                        <button type="button" data-acao="fechar-exportar">Fechar</button>
+                    </div>
+                </dialog>
 
                 <mapa-projeto class="mapa"></mapa-projeto>
 
@@ -157,8 +174,22 @@ export class PainelProjeto extends HTMLElement {
     // ---------------- Exportar ----------------
 
     _wireExportar() {
-        this.querySelector('[data-acao="exportar"]').addEventListener("click", () => {
+        const dialogo = this.querySelector(".dialogo-exportar");
+
+        this.querySelector('[data-acao="abrir-exportar"]').addEventListener("click", () => dialogo.showModal());
+        this.querySelector('[data-acao="fechar-exportar"]').addEventListener("click", () => dialogo.close());
+
+        this.querySelector('[data-acao="exportar-backup"]').addEventListener("click", () => {
             exportarProjeto(this.projetoId);
+            dialogo.close();
+        });
+        this.querySelector('[data-acao="exportar-geojson"]').addEventListener("click", () => {
+            exportarGeoJSON(this.projetoId);
+            dialogo.close();
+        });
+        this.querySelector('[data-acao="exportar-kml"]').addEventListener("click", () => {
+            exportarKML(this.projetoId);
+            dialogo.close();
         });
     }
 

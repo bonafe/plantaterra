@@ -1,4 +1,4 @@
-const VERSAO_CACHE = "plantaterra-v1";
+const VERSAO_CACHE = "plantaterra-v2";
 const CACHE_TILES = "plantaterra-tiles-v1";
 
 const ARQUIVOS_DO_APP = [
@@ -14,6 +14,7 @@ const ARQUIVOS_DO_APP = [
     "./js/componentes/util_dom.js",
     "./js/db/db_base.js",
     "./js/db/exportador_projeto.js",
+    "./js/db/exportador_geoespacial.js",
     "./js/db/plantaterra_db.js",
     "./js/dominio/nivelamento.js",
     "./js/geo/curvas_de_nivel.js",
