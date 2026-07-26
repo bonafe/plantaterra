@@ -1,7 +1,7 @@
 import { DBBase } from "./db_base.js";
 
 const NOME_BANCO = "PlantaTerraDB";
-const VERSAO = 2;
+const VERSAO = 3;
 
 const funcoesDeMigracao = [
     banco => {
@@ -27,6 +27,10 @@ const funcoesDeMigracao = [
 
         const osPlanta = banco.createObjectStore("planta_linha", { keyPath: "id" });
         osPlanta.createIndex("index_linha_id", "linha_id", { unique: false });
+    },
+    banco => {
+        const osContexto = banco.createObjectStore("elemento_contexto", { keyPath: "id" });
+        osContexto.createIndex("index_projeto_id", "projeto_id", { unique: false });
     }
 ];
 
@@ -69,10 +73,11 @@ class PlantaTerraDB extends DBBase {
     }
 
     async excluirProjeto(id) {
-        const [trilhas, estacoes, safsComLinhas] = await Promise.all([
+        const [trilhas, estacoes, safsComLinhas, elementosContexto] = await Promise.all([
             this.listarTrilhas(id),
             this.listarEstacoes(id),
-            this.listarTodasLinhasDoProjeto(id)
+            this.listarTodasLinhasDoProjeto(id),
+            this.listarElementosContexto(id)
         ]);
 
         const leiturasPorEstacao = await Promise.all(
@@ -88,7 +93,8 @@ class PlantaTerraDB extends DBBase {
             this.removerVarios("leitura_nivel", leiturasPorEstacao.flat().map(l => l.id)),
             this.removerVarios("saf", safsComLinhas.map(({ saf }) => saf.id)),
             this.removerVarios("linha_plantio", todasLinhas.map(l => l.id)),
-            this.removerVarios("planta_linha", plantasPorLinha.flat().map(p => p.id))
+            this.removerVarios("planta_linha", plantasPorLinha.flat().map(p => p.id)),
+            this.removerVarios("elemento_contexto", elementosContexto.map(e => e.id))
         ]);
 
         return this.remover("projeto", id);
@@ -290,6 +296,37 @@ class PlantaTerraDB extends DBBase {
     async listarPlantasDaLinha(linhaId) {
         const plantas = await this.obterTodos("planta_linha", "index_linha_id", linhaId);
         return plantas.sort((a, b) => a.indice_metro - b.indice_metro);
+    }
+
+    // ---- elemento_contexto ----
+
+    /**
+     * Elementos de contexto (casas, cercas, ruas etc, importados do KML/KMZ
+     * para ajudar a situar a propriedade — ver docs/especificacao.md secao
+     * 14.8) não têm estado próprio do usuário, então uma reimportação apenas
+     * substitui os anteriores em vez de fazer upsert.
+     */
+    async substituirElementosContexto(projetoId, elementos) {
+        const existentes = await this.listarElementosContexto(projetoId);
+        await this.removerVarios("elemento_contexto", existentes.map(e => e.id));
+
+        const agora = Date.now();
+        for (const elemento of elementos) {
+            await this.salvar("elemento_contexto", {
+                id: this.gerarId(),
+                projeto_id: projetoId,
+                nome: elemento.nome,
+                tipo: elemento.tipo,
+                geometria: elemento.geometria,
+                caminho: elemento.caminho,
+                origem: "kmz_importado",
+                criado_em: agora
+            });
+        }
+    }
+
+    async listarElementosContexto(projetoId) {
+        return this.obterTodos("elemento_contexto", "index_projeto_id", projetoId);
     }
 }
 

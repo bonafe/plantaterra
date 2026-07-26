@@ -263,7 +263,7 @@ Essa é uma aproximação geométrica (linhas raramente são perfeitamente paral
 ### 14.6 Fluxo de uso
 
 1. No painel do projeto, seção **"Sistemas Agroflorestais"**: botão **"Importar KMZ/KML"** → seleciona arquivo → pré-visualização (§14.3) → confirma.
-2. Lista de SAFs, cada uma mostrando quantas linhas e o comprimento total.
+2. Lista de SAFs, cada uma mostrando quantas linhas e o comprimento total; abaixo do título da seção, um resumo menor com o total de linhas e metros lineares somando todos os SAFs do projeto.
 3. Ao abrir um SAF, a interface mostra a **matriz completa** (§14.5a):
    - Todas as linhas do SAF destacadas no mapa de uma vez, com um marcador em cada metro que já tem planta cadastrada.
    - Uma **grade (matriz)** com uma fileira por linha lógica e uma coluna por metro, alinhadas entre si — linhas divididas (ex: "Linha 3" em duas partes) aparecem como uma única fileira, com o vão real em branco.
@@ -300,7 +300,28 @@ planta_linha {
   data_plantio: timestamp | null,
   criado_em
 }
+
+elemento_contexto {           // ver secao 14.8
+  id, projeto_id,
+  nome: string,
+  tipo: "Point" | "LineString" | "Polygon",
+  geometria: [{ lat, lon }, ...],
+  caminho: string,            // trilha de pastas do KML de origem, ex: "Moradia e Edificações > Casa Sete Cores"
+  origem: "kmz_importado",
+  criado_em
+}
 ```
+
+### 14.8 Elementos de contexto e respeito à visibilidade do KML
+
+Um KML/KMZ real de propriedade normalmente tem muito mais conteúdo do que só SAF/linhas de plantio: casas, cercas, ruas, rede elétrica, tubulação de irrigação, pontos de referência etc. Esse conteúdo ajuda a **situar** a propriedade no mapa, mesmo sem ser "dado agrícola" propriamente dito — então a importação (§14.3) também coleta esses elementos, com duas regras:
+
+1. **Respeita a tag `<visibility>` do KML.** O Google Earth marca `<visibility>0</visibility>` em pastas/placemarks que a pessoa desligou (ex: métodos antigos de marcação, rascunhos, camadas de trabalho). Isso é herdado por toda a subárvore — se uma pasta está com `visibility=0`, todo o conteúdo dentro dela é ignorado, mesmo que os filhos não tenham a tag. Sem `<visibility>`, o padrão do KML é visível. Isso evita poluir o projeto com conteúdo que a própria pessoa já considerou obsoleto (`js/kml/leitor_kml.js`, que agora propaga um campo `visivel` por nó da árvore).
+2. **Só entra o que não é SAF/Linha.** Qualquer `Placemark` com geometria (`Point`, `LineString` ou `Polygon`) que não seja uma pasta SAF reconhecida (§14.3) nem um placemark "Linha..." dentro dela vira um elemento de contexto — inclusive placemarks que estão dentro de uma pasta SAF mas não são linhas (ex: o polígono da área total do SAF, "Cerca Viva", "Gramado").
+
+Elementos de contexto **não têm estado do usuário** (diferente de `linha_plantio`, que acumula `planta_linha` ao longo do tempo) — por isso uma reimportação simplesmente **substitui** todos os elementos de contexto do projeto (`plantaTerraDB.substituirElementosContexto`), sem lógica de upsert.
+
+No mapa (`mapa_projeto.js#definirElementosContexto`), são desenhados em cinza neutro, por baixo de todas as outras camadas, sem interação — só para dar contexto visual. Na exportação (GeoJSON/KML/KMZ, §14.4), entram como uma pasta `"Contexto"` separada, mantendo o ciclo de importar → editar → exportar coerente com o resto do app.
 
 ## 15. Roadmap de fases futuras (fora de escopo desta implementação)
 

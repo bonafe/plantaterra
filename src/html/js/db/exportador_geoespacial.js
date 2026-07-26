@@ -15,11 +15,12 @@ const CORES_ISOLINHA = ["#2b6cb0", "#2f855a", "#b7791f", "#c05621", "#9b2c2c", "
  * salvos (ver docs/especificacao.md secao 14.4).
  */
 async function coletarDadosProjeto(projetoId) {
-    const [projeto, trilhaAtiva, estacoesComLeituras, safsComLinhasBrutas] = await Promise.all([
+    const [projeto, trilhaAtiva, estacoesComLeituras, safsComLinhasBrutas, elementosContexto] = await Promise.all([
         plantaTerraDB.obterProjeto(projetoId),
         plantaTerraDB.trilhaAtiva(projetoId),
         plantaTerraDB.listarTodasLeiturasDoProjeto(projetoId),
-        plantaTerraDB.listarTodasLinhasDoProjeto(projetoId)
+        plantaTerraDB.listarTodasLinhasDoProjeto(projetoId),
+        plantaTerraDB.listarElementosContexto(projetoId)
     ]);
 
     if (!projeto) {
@@ -37,7 +38,7 @@ async function coletarDadosProjeto(projetoId) {
         }))
     );
 
-    return { projeto, poligono, estacoesComLeituras, isolinhas, safsComLinhas };
+    return { projeto, poligono, estacoesComLeituras, isolinhas, safsComLinhas, elementosContexto };
 }
 
 async function pontosPlantadosDaLinha(linha) {
@@ -83,7 +84,7 @@ export async function exportarKMZ(projetoId) {
     baixarArquivo(zip, `plantaterra-${slug(dados.projeto.nome)}.kmz`, "application/vnd.google-earth.kmz");
 }
 
-function construirGeoJSON({ projeto, poligono, estacoesComLeituras, isolinhas, safsComLinhas }) {
+function construirGeoJSON({ projeto, poligono, estacoesComLeituras, isolinhas, safsComLinhas, elementosContexto }) {
     const features = [];
 
     if (poligono) {
@@ -168,10 +169,30 @@ function construirGeoJSON({ projeto, poligono, estacoesComLeituras, isolinhas, s
         }
     }
 
+    for (const elemento of elementosContexto) {
+        const geometria = geometriaContextoParaGeoJSON(elemento);
+        if (!geometria) continue;
+
+        features.push({
+            type: "Feature",
+            properties: { tipo: "contexto", nome: elemento.nome, caminho: elemento.caminho },
+            geometry: geometria
+        });
+    }
+
     return { type: "FeatureCollection", features };
 }
 
-function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas, safsComLinhas }) {
+function geometriaContextoParaGeoJSON(elemento) {
+    const coordenadas = elemento.geometria.map(p => [p.lon, p.lat]);
+
+    if (elemento.tipo === "Point") return { type: "Point", coordinates: coordenadas[0] };
+    if (elemento.tipo === "LineString") return { type: "LineString", coordinates: coordenadas };
+    if (elemento.tipo === "Polygon") return { type: "Polygon", coordinates: [[...coordenadas, coordenadas[0]]] };
+    return null;
+}
+
+function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas, safsComLinhas, elementosContexto }) {
     const partes = [];
 
     partes.push('<?xml version="1.0" encoding="UTF-8"?>');
@@ -264,8 +285,37 @@ function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas, safsC
         partes.push("</Folder>");
     }
 
+    if (elementosContexto.length > 0) {
+        partes.push("<Folder><name>Contexto</name>");
+        for (const elemento of elementosContexto) {
+            const placemarkKml = elementoContextoParaKml(elemento);
+            if (placemarkKml) partes.push(placemarkKml);
+        }
+        partes.push("</Folder>");
+    }
+
     partes.push("</Document></kml>");
     return partes.join("\n");
+}
+
+function elementoContextoParaKml(elemento) {
+    const nome = `<name>${escaparXml(elemento.nome)}</name>`;
+    const estilo = '<Style><LineStyle><color>ff969696</color><width>2</width></LineStyle><PolyStyle><color>1a969696</color></PolyStyle></Style>';
+
+    if (elemento.tipo === "Point") {
+        const p = elemento.geometria[0];
+        return `<Placemark>${nome}<Point><coordinates>${p.lon},${p.lat},0</coordinates></Point></Placemark>`;
+    }
+    if (elemento.tipo === "LineString") {
+        const coordenadas = elemento.geometria.map(p => `${p.lon},${p.lat},0`).join(" ");
+        return `<Placemark>${nome}${estilo}<LineString><coordinates>${coordenadas}</coordinates></LineString></Placemark>`;
+    }
+    if (elemento.tipo === "Polygon") {
+        const anel = elemento.geometria.map(p => `${p.lon},${p.lat},0`);
+        anel.push(anel[0]);
+        return `<Placemark>${nome}${estilo}<Polygon><outerBoundaryIs><LinearRing><coordinates>${anel.join(" ")}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`;
+    }
+    return null;
 }
 
 function corParaKml(corHex) {

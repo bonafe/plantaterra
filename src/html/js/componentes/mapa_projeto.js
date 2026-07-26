@@ -21,6 +21,7 @@ export class MapaProjeto extends HTMLElement {
             attribution: "&copy; colaboradores do OpenStreetMap"
         }).addTo(this.mapa);
 
+        this.camadaContexto = L.layerGroup().addTo(this.mapa);
         this.camadaPerimetro = L.layerGroup().addTo(this.mapa);
         this.camadaLeituras = L.layerGroup().addTo(this.mapa);
         this.camadaIsolinhas = L.layerGroup().addTo(this.mapa);
@@ -45,6 +46,39 @@ export class MapaProjeto extends HTMLElement {
             () => {},
             { enableHighAccuracy: true, timeout: 5000 }
         );
+    }
+
+    /**
+     * Elementos de contexto (casas, cercas, ruas etc — ver docs/especificacao.md
+     * secao 14.8) desenhados em cinza neutro, por baixo das demais camadas,
+     * só para ajudar a situar a propriedade — não são interativos.
+     */
+    definirElementosContexto(elementos) {
+        this.camadaContexto.clearLayers();
+
+        for (const elemento of elementos) {
+            const latLngs = elemento.geometria.map(p => [p.lat, p.lon]);
+
+            if (elemento.tipo === "Point") {
+                L.circleMarker(latLngs[0], {
+                    radius: 4,
+                    color: "#718096",
+                    weight: 1,
+                    fillColor: "#a0aec0",
+                    fillOpacity: 0.8
+                })
+                    .bindTooltip(elemento.nome)
+                    .addTo(this.camadaContexto);
+            } else if (elemento.tipo === "LineString") {
+                L.polyline(latLngs, { color: "#718096", weight: 2, opacity: 0.7, dashArray: "4 4" })
+                    .bindTooltip(elemento.nome)
+                    .addTo(this.camadaContexto);
+            } else if (elemento.tipo === "Polygon") {
+                L.polygon(latLngs, { color: "#718096", weight: 2, opacity: 0.7, fillOpacity: 0.08 })
+                    .bindTooltip(elemento.nome)
+                    .addTo(this.camadaContexto);
+            }
+        }
     }
 
     definirPoligonoPerimetro(poligono) {

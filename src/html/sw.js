@@ -1,4 +1,4 @@
-const VERSAO_CACHE = "plantaterra-v5";
+const VERSAO_CACHE = "plantaterra-v6";
 const CACHE_TILES = "plantaterra-tiles-v1";
 
 const ARQUIVOS_DO_APP = [

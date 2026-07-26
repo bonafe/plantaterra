@@ -3,65 +3,89 @@ import { lerArvoreKml } from "./leitor_kml.js";
 import { ehPastaSaf, ehPlacemarkLinha, parsearNomeLinha } from "../dominio/saf.js";
 import { comprimentoPoligonal, centralizarFaixaPoligonal } from "../geo/geodesia.js";
 
+const TIPOS_GEOMETRIA_CONTEXTO = new Set(["Point", "LineString", "Polygon"]);
+
 /**
  * Lê um arquivo KML/KMZ e monta uma pré-visualização de SAFs/linhas
- * reconhecidas, sem persistir nada ainda (ver docs/especificacao.md secao 14.3).
+ * reconhecidas (ver docs/especificacao.md secao 14.3), além de "elementos de
+ * contexto" (tudo mais que ajuda a situar a propriedade — casas, cercas,
+ * ruas etc, ver secao 14.8) sem persistir nada ainda.
+ *
+ * Só considera conteúdo com `visibility` diferente de 0 (respeitando o que a
+ * pessoa já desligou no Google Earth — normalmente rascunhos/métodos antigos).
  */
 export async function analisarArquivoParaImportacao(arquivoOuArrayBuffer) {
     const arvore = await lerArvoreKml(arquivoOuArrayBuffer);
     const safsEncontradas = [];
+    const elementosContexto = [];
     const avisos = [];
 
-    function caminharPastas(no) {
+    function caminharArvore(no, caminho) {
         if (ehPastaSaf(no.nome)) {
             const linhas = [];
-            coletarLinhas(no, linhas);
+            processarSubarvoreDeSaf(no, [...caminho, no.nome], linhas, elementosContexto);
             if (linhas.length === 0) {
                 avisos.push(`A pasta "${no.nome}" parece ser um SAF, mas nenhuma linha foi encontrada dentro dela.`);
             }
             safsEncontradas.push({ nomeOriginal: no.nome, linhas });
-        } else {
-            no.filhos.filter(f => f.tipo === "pasta").forEach(caminharPastas);
+            return;
         }
-    }
 
-    function coletarLinhas(no, acumulador) {
         for (const filho of no.filhos) {
+            if (!filho.visivel) continue;
+
             if (filho.tipo === "pasta") {
-                coletarLinhas(filho, acumulador);
-                continue;
+                caminharArvore(filho, [...caminho, no.nome]);
+            } else {
+                const elemento = extrairElementoContexto(filho, [...caminho, no.nome]);
+                if (elemento) elementosContexto.push(elemento);
             }
-            if (!ehPlacemarkLinha(filho.nome)) continue;
-
-            const geometria = extrairGeometriaDaLinha(filho.geometria);
-            if (!geometria || geometria.length < 2) {
-                avisos.push(
-                    `"${filho.nome}" começa com "Linha" mas não tem uma geometria utilizável ` +
-                    "(linha ou polígono de faixa estreita) — ignorada."
-                );
-                continue;
-            }
-
-            const { numero, descricao, metrosDeclarados } = parsearNomeLinha(filho.nome);
-
-            acumulador.push({
-                nomeOriginal: filho.nome,
-                numero,
-                descricao,
-                metrosDeclarados,
-                comprimentoCalculadoM: comprimentoPoligonal(geometria),
-                geometria
-            });
         }
     }
 
-    caminharPastas(arvore);
+    function processarSubarvoreDeSaf(no, caminho, linhasAcumuladas, contextoAcumulado) {
+        for (const filho of no.filhos) {
+            if (!filho.visivel) continue;
+
+            if (filho.tipo === "pasta") {
+                processarSubarvoreDeSaf(filho, [...caminho, filho.nome], linhasAcumuladas, contextoAcumulado);
+                continue;
+            }
+
+            if (ehPlacemarkLinha(filho.nome)) {
+                const geometria = extrairGeometriaDaLinha(filho.geometria);
+                if (!geometria || geometria.length < 2) {
+                    avisos.push(
+                        `"${filho.nome}" começa com "Linha" mas não tem uma geometria utilizável ` +
+                        "(linha ou polígono de faixa estreita) — ignorada."
+                    );
+                    continue;
+                }
+
+                const { numero, descricao, metrosDeclarados } = parsearNomeLinha(filho.nome);
+                linhasAcumuladas.push({
+                    nomeOriginal: filho.nome,
+                    numero,
+                    descricao,
+                    metrosDeclarados,
+                    comprimentoCalculadoM: comprimentoPoligonal(geometria),
+                    geometria
+                });
+                continue;
+            }
+
+            const elemento = extrairElementoContexto(filho, caminho);
+            if (elemento) contextoAcumulado.push(elemento);
+        }
+    }
+
+    caminharArvore(arvore, []);
 
     if (safsEncontradas.length === 0) {
         avisos.push("Nenhuma pasta cujo nome começa com \"SAF\" foi encontrada no arquivo.");
     }
 
-    return { safsEncontradas, avisos };
+    return { safsEncontradas, elementosContexto, avisos };
 }
 
 /**
@@ -79,12 +103,27 @@ function extrairGeometriaDaLinha(geometria) {
     return null;
 }
 
+function extrairElementoContexto(placemark, caminho) {
+    const geometria = placemark.geometria;
+    if (!geometria || !TIPOS_GEOMETRIA_CONTEXTO.has(geometria.tipo) || geometria.pontos.length === 0) {
+        return null;
+    }
+
+    return {
+        nome: placemark.nome || "(sem nome)",
+        tipo: geometria.tipo,
+        geometria: geometria.pontos.map(p => ({ lat: p.lat, lon: p.lon })),
+        caminho: caminho.filter(Boolean).join(" > ")
+    };
+}
+
 /**
  * Persiste as SAFs/linhas selecionadas na pré-visualização. Faz upsert por
  * nome (dentro do projeto para SAF, dentro da SAF para linha), preservando
- * as PlantaLinha já cadastradas em reimportações.
+ * as PlantaLinha já cadastradas em reimportações. Os elementos de contexto
+ * não têm estado próprio do usuário, então são simplesmente substituídos.
  */
-export async function importarParaProjeto(projetoId, safsSelecionadas) {
+export async function importarParaProjeto(projetoId, safsSelecionadas, elementosContexto = []) {
     const resultado = { safsCriadas: 0, safsAtualizadas: 0, linhasCriadas: 0, linhasAtualizadas: 0 };
 
     for (const safImportada of safsSelecionadas) {
@@ -126,6 +165,11 @@ export async function importarParaProjeto(projetoId, safsSelecionadas) {
                 resultado.linhasCriadas++;
             }
         }
+    }
+
+    if (elementosContexto.length > 0) {
+        await plantaTerraDB.substituirElementosContexto(projetoId, elementosContexto);
+        resultado.elementosContexto = elementosContexto.length;
     }
 
     return resultado;

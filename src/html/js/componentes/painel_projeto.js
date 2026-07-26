@@ -14,7 +14,7 @@ import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
 import { agruparPlantasPorMetro } from "../dominio/saf.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
-import { escaparHtml, formatarMetros, formatarArea, formatarDataSimples } from "./util_dom.js";
+import { escaparHtml, formatarMetros, formatarArea, formatarDataSimples, parsearDataBr } from "./util_dom.js";
 import "./mapa_projeto.js";
 import "./captura_gps.js";
 
@@ -96,6 +96,7 @@ export class PainelProjeto extends HTMLElement {
                                     <input type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" data-acao="importar-arquivo-saf" hidden />
                                 </label>
                             </div>
+                            <p class="saf-resumo-total"></p>
                             <ul class="lista-safs"></ul>
                         </section>
                     </div>
@@ -191,7 +192,7 @@ export class PainelProjeto extends HTMLElement {
                             <input type="text" name="observacao" maxlength="200" />
                         </label>
                         <label>Data de plantio (opcional)
-                            <input type="date" name="data_plantio" />
+                            <input type="text" name="data_plantio" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" />
                         </label>
                         <div class="acoes-formulario">
                             <button type="submit" class="botao-primario">Adicionar planta</button>
@@ -215,16 +216,18 @@ export class PainelProjeto extends HTMLElement {
     }
 
     async recarregarTudo() {
-        const [trilhaAtiva, estacoesComLeituras, safsComLinhas] = await Promise.all([
+        const [trilhaAtiva, estacoesComLeituras, safsComLinhas, elementosContexto] = await Promise.all([
             plantaTerraDB.trilhaAtiva(this.projetoId),
             plantaTerraDB.listarTodasLeiturasDoProjeto(this.projetoId),
-            plantaTerraDB.listarTodasLinhasDoProjeto(this.projetoId)
+            plantaTerraDB.listarTodasLinhasDoProjeto(this.projetoId),
+            plantaTerraDB.listarElementosContexto(this.projetoId)
         ]);
 
         this.trilhaAtiva = trilhaAtiva;
         this.estacoesComLeituras = estacoesComLeituras;
         this.safsComLinhas = safsComLinhas;
 
+        this.mapaElemento.definirElementosContexto(elementosContexto);
         this.mapaElemento.definirPoligonoPerimetro(trilhaAtiva?.poligono ?? null);
         this.mapaElemento.definirEstacoesELeituras(estacoesComLeituras);
         this.mapaElemento.definirLinhasSaf(safsComLinhas);
@@ -594,31 +597,43 @@ export class PainelProjeto extends HTMLElement {
             this._analiseSafPendente = analise;
             const safsComLinhas = analise.safsEncontradas.filter(saf => saf.linhas.length > 0);
             const totalLinhas = safsComLinhas.reduce((soma, saf) => soma + saf.linhas.length, 0);
+            const totalContexto = analise.elementosContexto.length;
 
-            if (safsComLinhas.length === 0) {
-                conteudoImportar.innerHTML = `<p>Nenhuma pasta cujo nome começa com "SAF" com linhas foi reconhecida neste arquivo.</p>`;
+            if (safsComLinhas.length === 0 && totalContexto === 0) {
+                conteudoImportar.innerHTML = `<p>Nenhum SAF com linhas nem elemento de contexto foi reconhecido neste arquivo.</p>`;
                 botaoConfirmarImportacao.hidden = true;
             } else {
                 botaoConfirmarImportacao.hidden = false;
-                conteudoImportar.innerHTML = `
-                    <p>${safsComLinhas.length} SAF(s), ${totalLinhas} linha(s) reconhecida(s):</p>
-                    <ul class="lista-preview-saf">
-                        ${safsComLinhas.map(saf => `
-                            <li>
-                                <strong>${escaparHtml(saf.nomeOriginal)}</strong>
-                                <ul>
-                                    ${saf.linhas.map(linha => `
-                                        <li>
-                                            ${escaparHtml(linha.nomeOriginal)} —
-                                            calculado: ${linha.comprimentoCalculadoM.toFixed(1)} m
-                                            ${linha.metrosDeclarados !== null ? `(declarado: ${linha.metrosDeclarados} m)` : ""}
-                                        </li>
-                                    `).join("")}
-                                </ul>
-                            </li>
-                        `).join("")}
-                    </ul>
-                `;
+                conteudoImportar.innerHTML = "";
+
+                if (safsComLinhas.length > 0) {
+                    conteudoImportar.innerHTML += `
+                        <p>${safsComLinhas.length} SAF(s), ${totalLinhas} linha(s) reconhecida(s):</p>
+                        <ul class="lista-preview-saf">
+                            ${safsComLinhas.map(saf => `
+                                <li>
+                                    <strong>${escaparHtml(saf.nomeOriginal)}</strong>
+                                    <ul>
+                                        ${saf.linhas.map(linha => `
+                                            <li>
+                                                ${escaparHtml(linha.nomeOriginal)} —
+                                                calculado: ${linha.comprimentoCalculadoM.toFixed(1)} m
+                                                ${linha.metrosDeclarados !== null ? `(declarado: ${linha.metrosDeclarados} m)` : ""}
+                                            </li>
+                                        `).join("")}
+                                    </ul>
+                                </li>
+                            `).join("")}
+                        </ul>
+                    `;
+                }
+
+                if (totalContexto > 0) {
+                    conteudoImportar.innerHTML += `
+                        <p>${totalContexto} elemento(s) de contexto (casas, cercas, ruas etc — só o que está
+                        visível no arquivo) serão adicionados ao mapa para ajudar a situar a propriedade.</p>
+                    `;
+                }
             }
 
             if (analise.avisos.length > 0) {
@@ -637,7 +652,11 @@ export class PainelProjeto extends HTMLElement {
 
         botaoConfirmarImportacao.addEventListener("click", async () => {
             if (!this._analiseSafPendente) return;
-            await importarParaProjeto(this.projetoId, this._analiseSafPendente.safsEncontradas);
+            await importarParaProjeto(
+                this.projetoId,
+                this._analiseSafPendente.safsEncontradas,
+                this._analiseSafPendente.elementosContexto
+            );
             this._analiseSafPendente = null;
             dialogoImportar.close();
             await this.recarregarTudo();
@@ -648,11 +667,21 @@ export class PainelProjeto extends HTMLElement {
 
     _renderizarListaSafs() {
         const listaElemento = this.querySelector(".lista-safs");
+        const resumoElemento = this.querySelector(".saf-resumo-total");
 
         if (this.safsComLinhas.length === 0) {
             listaElemento.innerHTML = `<li class="lista-vazia">Nenhum SAF importado ainda.</li>`;
+            resumoElemento.textContent = "";
             return;
         }
+
+        const totalLinhas = this.safsComLinhas.reduce((soma, { linhas }) => soma + linhas.length, 0);
+        const totalMetros = this.safsComLinhas.reduce(
+            (soma, { linhas }) => soma + linhas.reduce((s, l) => s + l.comprimento_calculado_m, 0),
+            0
+        );
+        resumoElemento.textContent =
+            `${this.safsComLinhas.length} SAF(s) · ${totalLinhas} linha(s) no total · ${totalMetros.toFixed(0)} m no total`;
 
         listaElemento.innerHTML = this.safsComLinhas.map(({ saf, linhas }) => {
             const comprimentoTotal = linhas.reduce((soma, l) => soma + l.comprimento_calculado_m, 0);
@@ -702,14 +731,29 @@ export class PainelProjeto extends HTMLElement {
 
         this.querySelector('[data-acao="fechar-planta-metro"]').addEventListener("click", () => dialogoPlanta.close());
 
+        const campoDataPlantio = formularioPlanta.querySelector('[name="data_plantio"]');
+        campoDataPlantio.addEventListener("input", () => {
+            const digitos = campoDataPlantio.value.replace(/\D/g, "").slice(0, 8);
+            if (digitos.length > 4) {
+                campoDataPlantio.value = `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}/${digitos.slice(4)}`;
+            } else if (digitos.length > 2) {
+                campoDataPlantio.value = `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
+            } else {
+                campoDataPlantio.value = digitos;
+            }
+        });
+
         formularioPlanta.addEventListener("submit", async evento => {
             evento.preventDefault();
             const dados = new FormData(formularioPlanta);
-            const dataPlantioTexto = dados.get("data_plantio");
+            const dataPlantioTexto = dados.get("data_plantio").trim();
             let dataPlantio = null;
             if (dataPlantioTexto) {
-                const [ano, mes, dia] = dataPlantioTexto.split("-").map(Number);
-                dataPlantio = Date.UTC(ano, mes - 1, dia);
+                dataPlantio = parsearDataBr(dataPlantioTexto);
+                if (dataPlantio === null) {
+                    alert("Data de plantio inválida. Use o formato dd/mm/aaaa.");
+                    return;
+                }
             }
 
             await plantaTerraDB.criarPlanta({

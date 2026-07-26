@@ -16,11 +16,13 @@ export async function lerArvoreKml(arquivoOuArrayBuffer) {
 
     const elementoKml = primeiroFilhoComNome(documentoXml, "kml") ?? documentoXml.documentElement;
     const raiz = primeiroFilhoComNome(elementoKml, "Document") ?? elementoKml;
+    const visivel = ehVisivel(raiz);
 
     return {
         tipo: "pasta",
         nome: textoDoFilho(raiz, "name") ?? "",
-        filhos: filhosComoArvore(raiz)
+        visivel,
+        filhos: filhosComoArvore(raiz, visivel)
     };
 }
 
@@ -47,22 +49,40 @@ function extrairKmlDoZip(bytes) {
     return fflate.strFromU8(arquivos[nomeKml]);
 }
 
-function filhosComoArvore(elemento) {
+/**
+ * @param {Element} elemento
+ * @param {boolean} visivelHerdado se algum ancestral já está marcado invisível
+ * (`<visibility>0</visibility>`), todos os descendentes herdam isso — o KML
+ * guarda a visibilidade que a pessoa configurou no Google Earth, e usamos
+ * isso para não trazer conteúdo desligado/antigo na importação.
+ */
+function filhosComoArvore(elemento, visivelHerdado) {
     const nos = [];
     for (const filho of elemento.children) {
         const nomeTag = filho.localName ?? filho.tagName;
 
         if (nomeTag === "Folder") {
-            nos.push({ tipo: "pasta", nome: textoDoFilho(filho, "name") ?? "", filhos: filhosComoArvore(filho) });
+            const visivel = visivelHerdado && ehVisivel(filho);
+            nos.push({
+                tipo: "pasta",
+                nome: textoDoFilho(filho, "name") ?? "",
+                visivel,
+                filhos: filhosComoArvore(filho, visivel)
+            });
         } else if (nomeTag === "Placemark") {
             nos.push({
                 tipo: "placemark",
                 nome: textoDoFilho(filho, "name") ?? "",
+                visivel: visivelHerdado && ehVisivel(filho),
                 geometria: extrairGeometria(filho)
             });
         }
     }
     return nos;
+}
+
+function ehVisivel(elemento) {
+    return textoDoFilho(elemento, "visibility") !== "0";
 }
 
 function primeiroFilhoComNome(elemento, nomeTag) {

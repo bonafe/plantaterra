@@ -250,6 +250,12 @@ mapa-projeto.mapa {
     margin-top: 10px;
 }
 
+.saf-resumo-total {
+    color: var(--cor-texto-suave);
+    font-size: 0.8rem;
+    margin: -4px 0 10px 0;
+}
+
 .item-saf {
     border: 1px solid var(--cor-borda);
     border-radius: var(--raio);
