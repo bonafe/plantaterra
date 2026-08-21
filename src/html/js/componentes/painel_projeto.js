@@ -14,7 +14,7 @@ import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
 import { agruparPlantasPorMetro } from "../dominio/saf.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
-import { escaparHtml, formatarMetros, formatarArea, formatarDataSimples, parsearDataBr } from "./util_dom.js";
+import { escaparHtml, formatarMetros, formatarArea, formatarData, formatarDataSimples, parsearDataBr } from "./util_dom.js";
 import "./mapa_projeto.js";
 import "./captura_gps.js";
 
@@ -72,6 +72,9 @@ export class PainelProjeto extends HTMLElement {
                             <button type="button" data-acao="mapear-perimetro" class="botao-secundario botao-largo">
                                 Mapear perímetro caminhando
                             </button>
+                            <button type="button" data-acao="abrir-historico-perimetro" class="botao-secundario botao-largo">
+                                Histórico de rodadas
+                            </button>
                         </section>
 
                         <section class="secao-estacoes">
@@ -122,6 +125,14 @@ export class PainelProjeto extends HTMLElement {
                         <button type="button" data-acao="desfazer-ponto-caminhada">Desfazer último ponto</button>
                         <button type="button" data-acao="concluir-caminhada" class="botao-primario">Concluir</button>
                         <button type="button" data-acao="cancelar-caminhada">Cancelar</button>
+                    </div>
+                </dialog>
+
+                <dialog class="dialogo-historico-perimetro">
+                    <h2>Histórico de rodadas do perímetro</h2>
+                    <ul class="lista-historico-perimetro"></ul>
+                    <div class="acoes-formulario">
+                        <button type="button" data-acao="fechar-historico-perimetro">Fechar</button>
                     </div>
                 </dialog>
 
@@ -346,6 +357,63 @@ export class PainelProjeto extends HTMLElement {
 
             await this.recarregarTudo();
         });
+
+        this._wireHistoricoPerimetro();
+    }
+
+    _wireHistoricoPerimetro() {
+        const dialogo = this.querySelector(".dialogo-historico-perimetro");
+        const lista = this.querySelector(".lista-historico-perimetro");
+
+        this.querySelector('[data-acao="abrir-historico-perimetro"]').addEventListener("click", async () => {
+            await this._renderizarHistoricoPerimetro();
+            dialogo.showModal();
+        });
+
+        this.querySelector('[data-acao="fechar-historico-perimetro"]').addEventListener("click", () => dialogo.close());
+
+        lista.addEventListener("click", async evento => {
+            const botao = evento.target.closest("button[data-acao]");
+            if (!botao) return;
+
+            const id = botao.closest(".item-historico-perimetro").dataset.id;
+
+            if (botao.dataset.acao === "usar-rodada-perimetro") {
+                await plantaTerraDB.definirTrilhaAtiva(this.projetoId, id);
+                await this._renderizarHistoricoPerimetro();
+                await this.recarregarTudo();
+            } else if (botao.dataset.acao === "excluir-rodada-perimetro") {
+                if (!confirm("Excluir esta rodada de captura do perímetro? Essa ação não pode ser desfeita.")) return;
+                await plantaTerraDB.removerTrilha(id);
+                await this._renderizarHistoricoPerimetro();
+                await this.recarregarTudo();
+            }
+        });
+    }
+
+    async _renderizarHistoricoPerimetro() {
+        const lista = this.querySelector(".lista-historico-perimetro");
+        const trilhas = (await plantaTerraDB.listarTrilhas(this.projetoId))
+            .sort((a, b) => b.criado_em - a.criado_em);
+
+        if (trilhas.length === 0) {
+            lista.innerHTML = `<li class="lista-vazia">Nenhuma rodada capturada ainda.</li>`;
+            return;
+        }
+
+        lista.innerHTML = trilhas.map(trilha => `
+            <li class="item-historico-perimetro" data-id="${trilha.id}">
+                <span>
+                    <strong>${formatarData(trilha.criado_em)}</strong>${trilha.ativo ? " — ativo" : ""}
+                    <br>
+                    ${trilha.poligono?.length >= 3 ? formatarArea(areaPoligonoMetros2(trilha.poligono)) : "polígono incompleto"}
+                </span>
+                <span class="acoes-item-historico">
+                    ${trilha.ativo ? "" : `<button type="button" class="botao-secundario" data-acao="usar-rodada-perimetro">Usar esta</button>`}
+                    <button type="button" class="botao-excluir" data-acao="excluir-rodada-perimetro" aria-label="Excluir">🗑</button>
+                </span>
+            </li>
+        `).join("");
     }
 
     // ---------------- Estações e leituras ----------------

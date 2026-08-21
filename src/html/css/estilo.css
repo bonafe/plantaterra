@@ -147,7 +147,8 @@ button {
 
 .lista-projetos,
 .lista-estacoes,
-.lista-leituras {
+.lista-leituras,
+.lista-historico-perimetro {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -367,6 +368,31 @@ mapa-projeto.mapa {
     padding: 6px 0;
     border-bottom: 1px dashed var(--cor-borda);
     font-size: 0.9rem;
+}
+
+.item-historico-perimetro {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--cor-borda);
+    font-size: 0.9rem;
+}
+
+.item-historico-perimetro span:first-child {
+    color: var(--cor-texto-suave);
+}
+
+.item-historico-perimetro strong {
+    color: var(--cor-texto);
+}
+
+.acoes-item-historico {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
 }
 
 dialog {

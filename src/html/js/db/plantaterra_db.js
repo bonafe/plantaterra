@@ -118,6 +118,20 @@ class PlantaTerraDB extends DBBase {
         return trilhas.find(t => t.ativo) || null;
     }
 
+    async removerTrilha(id) {
+        return this.remover("trilha_perimetro", id);
+    }
+
+    /** Marca uma rodada de captura já salva como a ativa, desativando as demais do projeto. */
+    async definirTrilhaAtiva(projetoId, trilhaId) {
+        const trilhas = await this.listarTrilhas(projetoId);
+        await Promise.all(trilhas.map(trilha => {
+            const deveEstarAtiva = trilha.id === trilhaId;
+            if (trilha.ativo === deveEstarAtiva) return null;
+            return this.salvar("trilha_perimetro", { ...trilha, ativo: deveEstarAtiva });
+        }));
+    }
+
     // ---- estacao_nivel ----
 
     async criarEstacao({ projetoId, nome, coordenada, alturaInstrumento, amarradaAEstacaoId = null }) {
