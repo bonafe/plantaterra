@@ -1,7 +1,10 @@
 import "./componentes/lista_projetos.js";
 import "./componentes/painel_projeto.js";
+import { VERSAO_APP } from "./versao.js";
 
 const app = document.querySelector("#app");
+
+document.querySelector(".rodape-versao").textContent = `PlantaTerra v${VERSAO_APP}`;
 
 function renderizarRota() {
     const hash = location.hash || "#/";

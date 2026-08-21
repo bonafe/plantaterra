@@ -185,6 +185,7 @@ Além dele, o projeto pode ser exportado em **GeoJSON** e **KML/KMZ** para uso e
 - **Privacidade**: nenhum dado sai do dispositivo a menos que o usuário exporte manualmente.
 - **Resiliência a interrupção**: qualquer leitura em andamento pode ser retomada se o navegador for fechado/recarregado no meio (estado salvo incrementalmente, não só ao final).
 - **Idioma**: pt-BR em toda a interface.
+- **Versionamento visível**: o rodapé de todas as telas mostra a versão do app (`js/versao.js`, constante `VERSAO_APP`), para o usuário confirmar visualmente que uma atualização já chegou ao aparelho. Precisa ser incrementada a cada release **junto com** `VERSAO_APP`/`VERSAO_CACHE` em `sw.js` — é o bump do cache do service worker que faz o app shell realmente trocar de versão; sem isso o rodapé mentiria (mostraria a versão nova enquanto o cache ainda serve os arquivos antigos).
 
 ## 14. SAF (Sistemas Agroflorestais) e Linhas de Plantio
 

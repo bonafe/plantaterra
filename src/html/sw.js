@@ -1,4 +1,7 @@
-const VERSAO_CACHE = "plantaterra-v6";
+// Mantenha sincronizado com VERSAO_APP em js/versao.js (rodapé do app) —
+// bump os dois juntos a cada release, ver docs/especificacao.md secao 10.
+const VERSAO_APP = "7";
+const VERSAO_CACHE = `plantaterra-v${VERSAO_APP}`;
 const CACHE_TILES = "plantaterra-tiles-v1";
 
 const ARQUIVOS_DO_APP = [
@@ -7,6 +10,7 @@ const ARQUIVOS_DO_APP = [
     "./manifest.json",
     "./css/estilo.css",
     "./js/main.js",
+    "./js/versao.js",
     "./js/componentes/captura_gps.js",
     "./js/componentes/lista_projetos.js",
     "./js/componentes/mapa_projeto.js",
