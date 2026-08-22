@@ -1,6 +1,6 @@
 // Mantenha sincronizado com VERSAO_APP em js/versao.js (rodapé do app) —
 // bump os dois juntos a cada release, ver docs/especificacao.md secao 10.
-const VERSAO_APP = "7";
+const VERSAO_APP = "8";
 const VERSAO_CACHE = `plantaterra-v${VERSAO_APP}`;
 const CACHE_TILES = "plantaterra-tiles-v1";
 
@@ -23,6 +23,7 @@ const ARQUIVOS_DO_APP = [
     "./js/dominio/nivelamento.js",
     "./js/dominio/saf.js",
     "./js/geo/curvas_de_nivel.js",
+    "./js/geo/casco_convexo.js",
     "./js/geo/douglas_peucker.js",
     "./js/geo/geodesia.js",
     "./js/geo/idw.js",
