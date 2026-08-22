@@ -254,8 +254,9 @@ export class PainelProjeto extends HTMLElement {
     }
 
     async recarregarTudo() {
-        const [trilhaAtiva, estacoesComLeituras, safsComLinhas, elementosContexto] = await Promise.all([
+        const [trilhaAtiva, trilhas, estacoesComLeituras, safsComLinhas, elementosContexto] = await Promise.all([
             plantaTerraDB.trilhaAtiva(this.projetoId),
+            plantaTerraDB.listarTrilhas(this.projetoId),
             plantaTerraDB.listarTodasLeiturasDoProjeto(this.projetoId),
             plantaTerraDB.listarTodasLinhasDoProjeto(this.projetoId),
             plantaTerraDB.listarElementosContexto(this.projetoId)
@@ -265,8 +266,13 @@ export class PainelProjeto extends HTMLElement {
         this.estacoesComLeituras = estacoesComLeituras;
         this.safsComLinhas = safsComLinhas;
 
+        // Vários perímetros podem estar marcados como visíveis ao mesmo tempo
+        // (ex: a propriedade toda + uma área interna) — o campo "ativo" segue
+        // existindo só para o resumo de área do topo e a exportação completa.
+        const trilhasVisiveis = trilhas.filter(t => t.visivel !== false);
+
         this.mapaElemento.definirElementosContexto(elementosContexto);
-        this.mapaElemento.definirPoligonoPerimetro(trilhaAtiva?.poligono ?? null);
+        this.mapaElemento.definirPerimetros(trilhasVisiveis);
         this.mapaElemento.definirEstacoesELeituras(estacoesComLeituras);
         this.mapaElemento.definirLinhasSaf(safsComLinhas);
         this.mapaElemento.ajustarZoomParaConteudo();
@@ -413,9 +419,11 @@ export class PainelProjeto extends HTMLElement {
 
             await plantaTerraDB.salvarTrilha({
                 projeto_id: this.projetoId,
+                nome: `Perímetro ${formatarData(Date.now())}`,
                 pontos_brutos: resultado.pontos_brutos,
                 poligono,
                 ativo: true,
+                visivel: true,
                 criado_em: Date.now()
             });
 
@@ -458,7 +466,20 @@ export class PainelProjeto extends HTMLElement {
             } else if (botao.dataset.acao === "exportar-kml-rodada") {
                 const trilha = await plantaTerraDB.obterTrilha(id);
                 exportarKMLTrilha(trilha, this.projeto.nome);
+            } else if (botao.dataset.acao === "renomear-rodada") {
+                this._editandoNomeTrilhaId = id;
+                await this._renderizarHistoricoPerimetro();
             }
+        });
+
+        lista.addEventListener("change", async evento => {
+            const checkbox = evento.target.closest('[data-acao="alternar-visivel-rodada"]');
+            if (!checkbox) return;
+
+            const id = checkbox.closest(".item-historico-perimetro").dataset.id;
+            const trilha = await plantaTerraDB.obterTrilha(id);
+            await plantaTerraDB.salvarTrilha({ ...trilha, visivel: checkbox.checked });
+            await this.recarregarTudo();
         });
     }
 
@@ -472,23 +493,67 @@ export class PainelProjeto extends HTMLElement {
             return;
         }
 
-        lista.innerHTML = trilhas.map(trilha => `
+        lista.innerHTML = trilhas.map(trilha => {
+            const nome = trilha.nome || `Perímetro ${formatarData(trilha.criado_em)}`;
+            const visivel = trilha.visivel !== false;
+            const emEdicao = this._editandoNomeTrilhaId === trilha.id;
+
+            return `
             <li class="item-historico-perimetro" data-id="${trilha.id}">
                 <span>
-                    <strong>${formatarData(trilha.criado_em)}</strong>${trilha.ativo ? " — ativo" : ""}
+                    ${emEdicao
+                        ? `<input type="text" class="input-nome-rodada" value="${escaparHtml(nome)}" maxlength="60" />`
+                        : `<strong>${escaparHtml(nome)}</strong>
+                           <button type="button" class="botao-icone-inline" data-acao="renomear-rodada" aria-label="Renomear">✏️</button>`
+                    }
+                    ${trilha.ativo ? " — principal" : ""}
                     <br>
                     ${trilha.poligono?.length >= 3 ? formatarArea(areaPoligonoMetros2(trilha.poligono)) : "polígono incompleto"}
+                    · ${formatarData(trilha.criado_em)}
+                    <label class="campo-checkbox">
+                        <input type="checkbox" data-acao="alternar-visivel-rodada" ${visivel ? "checked" : ""} />
+                        Visível no mapa
+                    </label>
                 </span>
                 <span class="acoes-item-historico">
                     <button type="button" class="botao-secundario" data-acao="editar-pontos-perimetro">Editar pontos</button>
                     ${trilha.poligono?.length >= 3
                         ? `<button type="button" class="botao-secundario" data-acao="exportar-kml-rodada">Exportar KML</button>`
                         : ""}
-                    ${trilha.ativo ? "" : `<button type="button" class="botao-secundario" data-acao="usar-rodada-perimetro">Usar esta</button>`}
+                    ${trilha.ativo ? "" : `<button type="button" class="botao-secundario" data-acao="usar-rodada-perimetro">Definir como principal</button>`}
                     <button type="button" class="botao-excluir" data-acao="excluir-rodada-perimetro" aria-label="Excluir">🗑</button>
                 </span>
             </li>
-        `).join("");
+        `;
+        }).join("");
+
+        if (this._editandoNomeTrilhaId) {
+            const input = lista.querySelector(".input-nome-rodada");
+            if (input) {
+                input.focus();
+                input.select();
+
+                const commit = async () => {
+                    const id = this._editandoNomeTrilhaId;
+                    this._editandoNomeTrilhaId = null;
+                    const trilha = await plantaTerraDB.obterTrilha(id);
+                    await plantaTerraDB.salvarTrilha({ ...trilha, nome: input.value.trim() || null });
+                    await this._renderizarHistoricoPerimetro();
+                    await this.recarregarTudo();
+                };
+
+                input.addEventListener("blur", commit, { once: true });
+                input.addEventListener("keydown", evento => {
+                    if (evento.key === "Enter") {
+                        input.blur();
+                    } else if (evento.key === "Escape") {
+                        input.removeEventListener("blur", commit);
+                        this._editandoNomeTrilhaId = null;
+                        this._renderizarHistoricoPerimetro();
+                    }
+                });
+            }
+        }
     }
 
     /**

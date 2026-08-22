@@ -91,7 +91,7 @@ Diferente da captura de um ponto único, aqui o GPS fica ligado continuamente en
 3. Mapa mostra a trilha sendo desenhada em tempo real (polyline no Leaflet), com a posição atual do usuário destacada (o marcador de posição atual usa a amostra bruta, já filtrada por precisão, sem esperar a janela — só a trilha registrada passa pelo filtro de medóide).
 4. Usuário pode pausar/retomar (ex. parar para almoçar) e apagar o último ponto se caminhar por engano.
 5. Ao apertar "Concluir perímetro": a trilha bruta passa por **simplificação (algoritmo de Douglas-Peucker)** para remover ruído mantendo a forma, e é fechada (conectando o último ponto ao primeiro) para virar um polígono — a menos que o projeto esteja marcado como "terreno convexo" (ver abaixo), caso em que o polígono é calculado por casco convexo.
-6. O polígono resultante fica associado ao projeto e é exibido permanentemente sobre o mapa. Pode ser refeito a qualquer momento (gera uma nova trilha, substituindo ou salvando como versão). O histórico de rodadas (tela "Histórico de rodadas") lista todas as capturas já feitas, permite trocar qual está ativa, editar os pontos brutos de qualquer uma delas, excluí-la, ou **exportar o polígono daquela rodada isoladamente em KML** (`js/db/exportador_geoespacial.js#exportarKMLTrilha`) — diferente da exportação completa do projeto (§8), que sempre usa a rodada ativa.
+6. O polígono resultante fica associado ao projeto e é exibido permanentemente sobre o mapa. Pode ser refeito a qualquer momento (gera uma nova trilha, substituindo ou salvando como versão). O histórico de rodadas (tela "Histórico de rodadas") lista todas as capturas já feitas, cada uma com nome editável (clique no lápis ✏️) e um checkbox "Visível no mapa" independente — **várias rodadas podem estar visíveis ao mesmo tempo**, cada uma desenhada com uma cor e rótulo diferentes (útil para áreas internas à propriedade, como uma horta, vistas junto com o perímetro total). A partir daí também dá para trocar qual rodada é a "principal" (usada no resumo de área do topo e na exportação completa do projeto, §8), editar os pontos brutos de qualquer rodada, excluí-la, ou **exportar o polígono daquela rodada isoladamente em KML** (`js/db/exportador_geoespacial.js#exportarKMLTrilha`).
 7. Área do polígono (m² e hectares) é calculada e exibida (fórmula de área geodésica aproximada, ex. shoelace sobre projeção local equirretangular — suficiente para propriedades rurais de porte comum).
 
 ### 6.1 Fechamento por casco convexo (terrenos convexos)
@@ -138,12 +138,18 @@ Um único banco `PlantaTerraDB`, com as seguintes object stores:
 {
   id: uuid,
   projeto_id: uuid,
+  nome: string | null,             // nome livre (ex: "Perímetro total", "Horta"); sem nome, usa a data da captura
   pontos_brutos: [{ lat, lon, precisao, timestamp }, ...],
   poligono: [{ lat, lon }, ...],   // após simplificação e fechamento
   criado_em: timestamp,
-  ativo: boolean   // permite manter histórico de re-mapeamentos, só um "ativo" por projeto
+  ativo: boolean,   // o perímetro "principal" do projeto — usado no resumo de área do topo e na exportação
+                     // completa (§8, §14.4); só um "ativo" por projeto
+  visivel: boolean  // desenhado no mapa? vários registros podem estar visíveis ao mesmo tempo — não precisa
+                     // ser o "ativo" (ex: a propriedade toda + uma área interna, como uma horta, juntas)
 }
 ```
+
+Diferente do campo `ativo` (histórico de re-mapeamentos de UM perímetro, só um por vez), `visivel` é independente por registro — permite ter vários perímetros nomeados desenhados juntos no mapa ao mesmo tempo (§9, tela "Histórico de rodadas"), útil para áreas internas à propriedade (uma horta, um curral) que não são "a divisa" mas fazem sentido ver junto com ela. Registros antigos sem o campo `visivel` são tratados como visíveis por padrão (`visivel !== false`).
 
 ### `estacao_nivel`
 ```

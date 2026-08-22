@@ -4,4 +4,4 @@
  * assim o rodapé só muda de número quando o service worker também tem
  * uma versão nova em cache pra servir.
  */
-export const VERSAO_APP = "10";
+export const VERSAO_APP = "11";

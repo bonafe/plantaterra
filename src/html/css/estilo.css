@@ -122,6 +122,15 @@ button {
     padding: 8px;
 }
 
+.botao-icone-inline {
+    border: none;
+    background: transparent;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 6px 8px;
+    vertical-align: middle;
+}
+
 .cabecalho-app {
     padding: var(--espaco) 16px;
     border-bottom: 1px solid var(--cor-borda);
@@ -406,10 +415,10 @@ mapa-projeto.mapa {
 
 .item-historico-perimetro {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 10px 0;
     border-bottom: 1px dashed var(--cor-borda);
     font-size: 0.9rem;
 }
@@ -422,11 +431,15 @@ mapa-projeto.mapa {
     color: var(--cor-texto);
 }
 
+.item-historico-perimetro .campo-checkbox {
+    margin-top: 2px;
+}
+
 .acoes-item-historico {
     display: flex;
     align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 dialog {

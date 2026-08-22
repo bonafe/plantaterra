@@ -93,12 +93,27 @@ export class MapaProjeto extends HTMLElement {
         }
     }
 
-    definirPoligonoPerimetro(poligono) {
+    /**
+     * Desenha todos os perímetros marcados como visíveis — podem ser vários
+     * ao mesmo tempo (ex: a propriedade toda + uma área interna, como uma
+     * horta). O perímetro principal do projeto (trilha.ativo) mantém a cor
+     * roxa de sempre; os demais usam a paleta compartilhada, um rótulo
+     * (nome da rodada) por polígono, no mesmo padrão de definirLinhasSaf.
+     */
+    definirPerimetros(trilhas) {
         this.camadaPerimetro.clearLayers();
-        if (!poligono || poligono.length < 3) return;
 
-        const latLngs = poligono.map(p => [p.lat, p.lon]);
-        L.polygon(latLngs, { color: "#805ad5", weight: 3, fillOpacity: 0.08 }).addTo(this.camadaPerimetro);
+        trilhas.forEach((trilha, indice) => {
+            if (!trilha.poligono || trilha.poligono.length < 3) return;
+
+            const latLngs = trilha.poligono.map(p => [p.lat, p.lon]);
+            const cor = trilha.ativo ? "#805ad5" : CORES_ISOLINHA[indice % CORES_ISOLINHA.length];
+            const nome = trilha.nome || "Perímetro";
+
+            L.polygon(latLngs, { color: cor, weight: trilha.ativo ? 3 : 2, fillOpacity: 0.08 })
+                .bindTooltip(nome)
+                .addTo(this.camadaPerimetro);
+        });
     }
 
     definirEstacoesELeituras(estacoesComLeituras) {
