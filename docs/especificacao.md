@@ -83,8 +83,12 @@ Esse fluxo é usado tanto para capturar a coordenada de uma `EstacaoNivel` quant
 Diferente da captura de um ponto único, aqui o GPS fica ligado continuamente enquanto a pessoa caminha:
 
 1. Usuário aperta "Iniciar caminhada do perímetro".
-2. App usa `watchPosition` continuamente, adicionando um ponto à trilha sempre que a posição nova estiver a mais de uma distância mínima da última posição registrada (padrão 3 m, configurável) — evita acumular ruído parado no mesmo lugar.
-3. Mapa mostra a trilha sendo desenhada em tempo real (polyline no Leaflet), com a posição atual do usuário destacada.
+2. App usa `watchPosition` continuamente. Cada amostra passa por dois filtros antes de virar ponto confirmado da trilha, para evitar saltos isolados de GPS (multipath, reflexo em construção/vegetação):
+   - **Precisão**: amostras com `accuracy` pior que um limite configurável (padrão 20 m, mesmo padrão usado na captura de ponto único, §5) são descartadas — nem alimentam o marcador de posição atual, nem a trilha.
+   - **Medóide em janela deslizante**: as amostras aceitas por precisão entram numa janela das últimas N amostras (padrão 3, configurável). A cada nova amostra, com a janela cheia, calcula-se o **medóide** — a amostra da janela cuja soma de distâncias até as outras é a menor — e esse é o ponto candidato. Um salto isolado fica longe das demais amostras da janela e nunca vence essa comparação; um deslocamento real (mesmo acelerando, a pé ou de carro) só precisa que a maioria das amostras recentes concorde entre si, sem depender de um limiar fixo de velocidade.
+   - O candidato resultante só vira ponto confirmado da trilha se estiver a mais de uma distância mínima do último ponto confirmado (padrão 3 m, configurável) — a mesma decimação de sempre, agora alimentada pelo candidato filtrado em vez da amostra bruta.
+   - Efeito colateral aceito: um pequeno atraso (poucos segundos, até a janela encher) entre o início da caminhada e o primeiro ponto confirmado, e entre cada amostra bruta e sua confirmação.
+3. Mapa mostra a trilha sendo desenhada em tempo real (polyline no Leaflet), com a posição atual do usuário destacada (o marcador de posição atual usa a amostra bruta, já filtrada por precisão, sem esperar a janela — só a trilha registrada passa pelo filtro de medóide).
 4. Usuário pode pausar/retomar (ex. parar para almoçar) e apagar o último ponto se caminhar por engano.
 5. Ao apertar "Concluir perímetro": a trilha bruta passa por **simplificação (algoritmo de Douglas-Peucker)** para remover ruído mantendo a forma, e é fechada (conectando o último ponto ao primeiro) para virar um polígono.
 6. O polígono resultante fica associado ao projeto e é exibido permanentemente sobre o mapa. Pode ser refeito a qualquer momento (gera uma nova trilha, substituindo ou salvando como versão).

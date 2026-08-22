@@ -3,9 +3,11 @@ import { simplificarTrilha, avaliarFechamento } from "../geo/douglas_peucker.js"
 
 /**
  * Captura contínua de trilha enquanto o usuário caminha pelo perímetro
- * (ver docs/especificacao.md secao 6). Mantém watchPosition ligado e só
- * adiciona um ponto quando a pessoa se moveu o suficiente da última posição
- * registrada, para não acumular ruído parado no mesmo lugar.
+ * (ver docs/especificacao.md secao 6). Mantém watchPosition ligado, filtra
+ * amostras de baixa precisão e saltos isolados de GPS (filtro de medóide em
+ * janela deslizante), e só adiciona um ponto confirmado quando a pessoa se
+ * moveu o suficiente da última posição registrada, para não acumular ruído
+ * parado no mesmo lugar.
  */
 export class CaptadorTrilha extends EventTarget {
 
@@ -15,9 +17,13 @@ export class CaptadorTrilha extends EventTarget {
     constructor(opcoes = {}) {
         super();
         this.distanciaMinimaMetros = opcoes.distanciaMinimaMetros ?? 3;
+        this.precisaoMaxima = opcoes.precisaoMaxima ?? 20;
+        this.tamanhoJanelaMedoide = opcoes.tamanhoJanelaMedoide ?? 3;
         this.watchId = null;
         this.pausado = false;
         this.pontosBrutos = [];
+        this._janela = [];
+        this.amostrasDescartadasPrecisao = 0;
     }
 
     iniciar() {
@@ -37,19 +43,40 @@ export class CaptadorTrilha extends EventTarget {
                     timestamp: posicao.timestamp
                 };
 
-                this.dispatchEvent(new CustomEvent(CaptadorTrilha.EVENTO_POSICAO_ATUAL, { detail: ponto }));
+                const precisaoOk = ponto.precisao <= this.precisaoMaxima;
 
-                if (this.pausado) {
+                if (precisaoOk) {
+                    this.dispatchEvent(new CustomEvent(CaptadorTrilha.EVENTO_POSICAO_ATUAL, { detail: ponto }));
+                } else {
+                    this.amostrasDescartadasPrecisao++;
+                }
+
+                if (this.pausado || !precisaoOk) {
                     return;
                 }
 
+                // Filtro de medóide: só confirma um ponto quando ele é corroborado
+                // pelas amostras vizinhas na janela, para descartar saltos isolados
+                // de GPS (ver docs/especificacao.md secao 6) sem depender de um
+                // limiar fixo de velocidade.
+                this._janela.push(ponto);
+                if (this._janela.length > this.tamanhoJanelaMedoide) {
+                    this._janela.shift();
+                }
+                if (this._janela.length < this.tamanhoJanelaMedoide) {
+                    return;
+                }
+
+                const candidato = medoide(this._janela);
                 const ultimo = this.pontosBrutos[this.pontosBrutos.length - 1];
-                const distancia = ultimo ? distanciaMetros(ultimo.lat, ultimo.lon, ponto.lat, ponto.lon) : Infinity;
+                const distancia = ultimo
+                    ? distanciaMetros(ultimo.lat, ultimo.lon, candidato.lat, candidato.lon)
+                    : Infinity;
 
                 if (distancia >= this.distanciaMinimaMetros) {
-                    this.pontosBrutos.push(ponto);
+                    this.pontosBrutos.push(candidato);
                     this.dispatchEvent(new CustomEvent(CaptadorTrilha.EVENTO_PONTO_ADICIONADO, {
-                        detail: { ponto, totalPontos: this.pontosBrutos.length }
+                        detail: { ponto: candidato, totalPontos: this.pontosBrutos.length }
                     }));
                 }
             },
@@ -60,10 +87,12 @@ export class CaptadorTrilha extends EventTarget {
 
     pausar() {
         this.pausado = true;
+        this._janela = [];
     }
 
     retomar() {
         this.pausado = false;
+        this._janela = [];
     }
 
     removerUltimoPonto() {
@@ -93,4 +122,29 @@ export class CaptadorTrilha extends EventTarget {
             distanciaFechamento
         };
     }
+}
+
+/**
+ * Escolhe, dentro da janela, a amostra mais "central" (menor soma de
+ * distâncias até as outras) — robusto a um salto isolado de GPS na janela,
+ * sem depender de um limiar fixo de velocidade.
+ */
+function medoide(amostras) {
+    let melhor = amostras[0];
+    let menorSoma = Infinity;
+
+    for (const candidata of amostras) {
+        let soma = 0;
+        for (const outra of amostras) {
+            if (outra !== candidata) {
+                soma += distanciaMetros(candidata.lat, candidata.lon, outra.lat, outra.lon);
+            }
+        }
+        if (soma < menorSoma) {
+            menorSoma = soma;
+            melhor = candidata;
+        }
+    }
+
+    return melhor;
 }
