@@ -77,6 +77,29 @@ export async function exportarKML(projetoId) {
     baixarArquivo(kml, `plantaterra-${slug(dados.projeto.nome)}.kml`, "application/vnd.google-earth.kml+xml");
 }
 
+/**
+ * Exporta o polígono de uma única rodada de captura do perímetro (ver
+ * histórico de rodadas), sem o resto dos dados do projeto — útil para
+ * conferir/guardar uma rodada específica fora do app (ex: no Google Earth).
+ */
+export function exportarKMLTrilha(trilha, nomeProjeto) {
+    if (!trilha.poligono || trilha.poligono.length < 3) {
+        throw new Error("Esta rodada não tem um polígono válido para exportar.");
+    }
+
+    const nomePlacemark = `Perímetro — ${new Date(trilha.criado_em).toLocaleDateString("pt-BR")}`;
+    const kml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>',
+        `<name>${escaparXml(nomeProjeto)} — Perímetro</name>`,
+        construirPlacemarkPerimetro(trilha.poligono, nomePlacemark),
+        "</Document></kml>"
+    ].join("\n");
+
+    const data = new Date(trilha.criado_em).toISOString().slice(0, 10);
+    baixarArquivo(kml, `plantaterra-${slug(nomeProjeto)}-perimetro-${data}.kml`, "application/vnd.google-earth.kml+xml");
+}
+
 export async function exportarKMZ(projetoId) {
     const dados = await coletarDadosProjeto(projetoId);
     const kml = construirKML(dados);
@@ -200,17 +223,7 @@ function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas, safsC
     partes.push(`<name>${escaparXml(projeto.nome)}</name>`);
 
     if (poligono) {
-        const anel = poligono.map(p => `${p.lon},${p.lat},0`).concat(`${poligono[0].lon},${poligono[0].lat},0`);
-        partes.push(`
-            <Placemark>
-                <name>Perímetro</name>
-                <Style><LineStyle><color>ff805ad5</color><width>3</width></LineStyle>
-                <PolyStyle><color>2a805ad5</color></PolyStyle></Style>
-                <Polygon><outerBoundaryIs><LinearRing><coordinates>
-                    ${anel.join(" ")}
-                </coordinates></LinearRing></outerBoundaryIs></Polygon>
-            </Placemark>
-        `);
+        partes.push(construirPlacemarkPerimetro(poligono));
     }
 
     for (const { estacao, leituras } of estacoesComLeituras) {
@@ -296,6 +309,20 @@ function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas, safsC
 
     partes.push("</Document></kml>");
     return partes.join("\n");
+}
+
+function construirPlacemarkPerimetro(poligono, nome = "Perímetro") {
+    const anel = poligono.map(p => `${p.lon},${p.lat},0`).concat(`${poligono[0].lon},${poligono[0].lat},0`);
+    return `
+        <Placemark>
+            <name>${escaparXml(nome)}</name>
+            <Style><LineStyle><color>ff805ad5</color><width>3</width></LineStyle>
+            <PolyStyle><color>2a805ad5</color></PolyStyle></Style>
+            <Polygon><outerBoundaryIs><LinearRing><coordinates>
+                ${anel.join(" ")}
+            </coordinates></LinearRing></outerBoundaryIs></Polygon>
+        </Placemark>
+    `;
 }
 
 function elementoContextoParaKml(elemento) {

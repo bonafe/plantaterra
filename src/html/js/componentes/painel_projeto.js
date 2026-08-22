@@ -1,6 +1,6 @@
 import { plantaTerraDB } from "../db/plantaterra_db.js";
 import { exportarProjeto } from "../db/exportador_projeto.js";
-import { exportarGeoJSON, exportarKML, exportarKMZ } from "../db/exportador_geoespacial.js";
+import { exportarGeoJSON, exportarKML, exportarKMZ, exportarKMLTrilha } from "../db/exportador_geoespacial.js";
 import { CaptadorTrilha } from "../gps/captador_trilha.js";
 import {
     calcularAltitudeLeitura,
@@ -455,6 +455,9 @@ export class PainelProjeto extends HTMLElement {
                 const trilha = await plantaTerraDB.obterTrilha(id);
                 dialogo.close();
                 this._abrirEditorPontosTrilha(trilha);
+            } else if (botao.dataset.acao === "exportar-kml-rodada") {
+                const trilha = await plantaTerraDB.obterTrilha(id);
+                exportarKMLTrilha(trilha, this.projeto.nome);
             }
         });
     }
@@ -478,6 +481,9 @@ export class PainelProjeto extends HTMLElement {
                 </span>
                 <span class="acoes-item-historico">
                     <button type="button" class="botao-secundario" data-acao="editar-pontos-perimetro">Editar pontos</button>
+                    ${trilha.poligono?.length >= 3
+                        ? `<button type="button" class="botao-secundario" data-acao="exportar-kml-rodada">Exportar KML</button>`
+                        : ""}
                     ${trilha.ativo ? "" : `<button type="button" class="botao-secundario" data-acao="usar-rodada-perimetro">Usar esta</button>`}
                     <button type="button" class="botao-excluir" data-acao="excluir-rodada-perimetro" aria-label="Excluir">🗑</button>
                 </span>
