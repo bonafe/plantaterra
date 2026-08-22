@@ -127,6 +127,20 @@ export class PainelProjeto extends HTMLElement {
                     </section>
                 </div>
 
+                <div class="editor-pontos-trilha" hidden>
+                    <p class="editar-pontos-status"></p>
+                    <p class="editar-pontos-detalhe" hidden></p>
+                    <div class="acoes-formulario">
+                        <button type="button" class="botao-secundario" data-acao="excluir-ponto-selecionado" hidden>
+                            Excluir ponto selecionado 🗑
+                        </button>
+                    </div>
+                    <div class="acoes-formulario">
+                        <button type="button" class="botao-primario" data-acao="salvar-edicao-pontos">Salvar alterações</button>
+                        <button type="button" data-acao="fechar-editar-pontos">Fechar</button>
+                    </div>
+                </div>
+
                 <captura-gps></captura-gps>
                 <dialog class="dialogo-caminhada">
                     <h2>Mapeando perímetro</h2>
@@ -144,21 +158,6 @@ export class PainelProjeto extends HTMLElement {
                     <ul class="lista-historico-perimetro"></ul>
                     <div class="acoes-formulario">
                         <button type="button" data-acao="fechar-historico-perimetro">Fechar</button>
-                    </div>
-                </dialog>
-
-                <dialog class="dialogo-editar-pontos-trilha">
-                    <h2>Editar pontos da rodada</h2>
-                    <p class="editar-pontos-status"></p>
-                    <p class="editar-pontos-detalhe" hidden></p>
-                    <div class="acoes-formulario">
-                        <button type="button" class="botao-secundario" data-acao="excluir-ponto-selecionado" hidden>
-                            Excluir ponto selecionado 🗑
-                        </button>
-                    </div>
-                    <div class="acoes-formulario">
-                        <button type="button" class="botao-primario" data-acao="salvar-edicao-pontos">Salvar alterações</button>
-                        <button type="button" data-acao="fechar-editar-pontos">Fechar</button>
                     </div>
                 </dialog>
 
@@ -493,7 +492,7 @@ export class PainelProjeto extends HTMLElement {
      * grava no banco (recalculando o polígono) quando o usuário confirma.
      */
     _wireEditorPontosTrilha() {
-        const dialogo = this.querySelector(".dialogo-editar-pontos-trilha");
+        const painel = this.querySelector(".editor-pontos-trilha");
         const status = this.querySelector(".editar-pontos-status");
         const detalhe = this.querySelector(".editar-pontos-detalhe");
         const botaoExcluirPonto = this.querySelector('[data-acao="excluir-ponto-selecionado"]');
@@ -557,7 +556,7 @@ export class PainelProjeto extends HTMLElement {
             await this.recarregarTudo();
         });
 
-        this._editorPontosDialogo = dialogo;
+        this._editorPontosPainel = painel;
         this._editorPontosStatus = status;
         this._editorPontosDetalhe = detalhe;
         this._editorPontosBotaoExcluir = botaoExcluirPonto;
@@ -573,11 +572,14 @@ export class PainelProjeto extends HTMLElement {
             indiceSelecionado: null,
             alterado: false
         };
+        // Modo de tela cheia: esconde as demais seções (não fica só visualmente
+        // por trás — ficavam clicáveis também) e o mapa cresce para ocupar
+        // quase toda a tela, dando espaço de verdade para tocar nos pontos.
+        this.querySelector(".painel-inferior").hidden = true;
+        this._editorPontosPainel.hidden = false;
+        this.mapaElemento.invalidarTamanho();
+
         this._renderizarEditorPontosTrilha({ ajustarZoom: true });
-        // .show() (não .showModal()) para o mapa continuar clicável por trás
-        // da folha — o usuário precisa poder tocar em vários pontos no mapa
-        // sem fechar o editor a cada seleção.
-        this._editorPontosDialogo.show();
     }
 
     _renderizarEditorPontosTrilha({ ajustarZoom = false } = {}) {
@@ -613,7 +615,11 @@ export class PainelProjeto extends HTMLElement {
         this._edicaoPontos = null;
         this.mapaElemento.limparPreviaPoligono();
         this.mapaElemento.limparPontosTrilhaEditavel();
-        this._editorPontosDialogo.close();
+
+        this._editorPontosPainel.hidden = true;
+        this.querySelector(".painel-inferior").hidden = false;
+        this.mapaElemento.invalidarTamanho();
+        this.mapaElemento.ajustarZoomParaConteudo();
     }
 
     // ---------------- Estações e leituras ----------------

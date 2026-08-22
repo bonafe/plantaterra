@@ -273,7 +273,10 @@ export class MapaProjeto extends HTMLElement {
             const selecionado = indice === indiceSelecionado;
 
             L.circleMarker([ponto.lat, ponto.lon], {
-                radius: selecionado ? 11 : 6,
+                // Raio generoso para toque (o alvo de 6px original era bom
+                // para mouse, mas pequeno demais para dedo — mínimo
+                // recomendado de toque é ~44px de diâmetro).
+                radius: selecionado ? 17 : 11,
                 color: selecionado ? "#1a202c" : cor,
                 weight: selecionado ? 3 : 2,
                 fillColor: cor,

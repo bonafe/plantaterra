@@ -23,6 +23,11 @@
 
 html, body {
     height: 100%;
+    /* 100dvh acompanha a barra de endereço do navegador mobile aparecendo/
+       sumindo; 100% sozinho fica com folga/corte quando ela muda de estado.
+       Navegadores sem suporte a dvh simplesmente ignoram esta linha e ficam
+       com o 100% acima. */
+    height: 100dvh;
     margin: 0;
 }
 
@@ -47,7 +52,7 @@ body {
     text-align: center;
     font-size: 0.7rem;
     color: var(--cor-texto-suave);
-    padding: 3px 0;
+    padding: 3px 0 calc(3px + env(safe-area-inset-bottom));
     background: var(--cor-secundaria);
 }
 
@@ -195,10 +200,27 @@ button {
     font-size: 0.85rem;
 }
 
+/*
+ * painel-projeto (o custom element em si, não a div .tela-painel-projeto
+ * dentro dele) precisa esticar para preencher #app — sem isso ele fica do
+ * tamanho do próprio conteúdo, e sobra espaço em branco embaixo sempre que
+ * o conteúdo interno for mais curto que a tela (ex: modo de edição de
+ * pontos, que esconde a maior parte das seções). Antes isso ficava mascarado
+ * porque as seções normais já eram altas o bastante para preencher a tela
+ * "sem querer".
+ */
+painel-projeto {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
 .tela-painel-projeto {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 mapa-projeto.mapa {
@@ -425,8 +447,7 @@ dialog::backdrop {
  * visível e centralizado no metro que está sendo editado (ver
  * mapa_projeto.js#destacarSegmentoAtivo).
  */
-dialog.dialogo-planta-metro,
-dialog.dialogo-editar-pontos-trilha {
+dialog.dialogo-planta-metro {
     position: fixed;
     inset: auto 0 0 0;
     margin: 0;
@@ -438,18 +459,24 @@ dialog.dialogo-editar-pontos-trilha {
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
 }
 
-/*
- * dialogo-editar-pontos-trilha usa .show() (não .showModal()) para o mapa
- * continuar clicável por trás da folha — sem o top layer do modal, precisa
- * de z-index explícito acima dos controles do Leaflet (z-index: 1000).
- */
-dialog.dialogo-editar-pontos-trilha {
-    z-index: 1001;
+dialog.dialogo-planta-metro::backdrop {
+    background: transparent;
 }
 
-dialog.dialogo-planta-metro::backdrop,
-dialog.dialogo-editar-pontos-trilha::backdrop {
-    background: transparent;
+/*
+ * Editor de pontos da trilha: NÃO é um <dialog> — é um modo de tela cheia.
+ * Ao abrir, .painel-inferior é escondido (não só visualmente: fica
+ * realmente inacessível a toque) e o mapa cresce para ocupar quase toda a
+ * tela (ver painel_projeto.js#_abrirEditorPontosTrilha), com este painel
+ * como uma faixa fixa e compacta embaixo dele, empilhada normalmente no
+ * layout — sem position:fixed, sem disputa de z-index com o Leaflet.
+ */
+.editor-pontos-trilha {
+    flex: 0 0 auto;
+    max-height: 40dvh;
+    overflow-y: auto;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--cor-borda);
 }
 
 dialog label {
