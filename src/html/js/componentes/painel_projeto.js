@@ -9,6 +9,7 @@ import {
     consolidarPontosDoProjeto
 } from "../dominio/nivelamento.js";
 import { gerarCurvasDeNivel } from "../geo/curvas_de_nivel.js";
+import { simplificarTrilha, avaliarFechamento } from "../geo/douglas_peucker.js";
 import { areaPoligonoMetros2 } from "../geo/geodesia.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
@@ -136,6 +137,21 @@ export class PainelProjeto extends HTMLElement {
                     </div>
                 </dialog>
 
+                <dialog class="dialogo-editar-pontos-trilha">
+                    <h2>Editar pontos da rodada</h2>
+                    <p class="editar-pontos-status"></p>
+                    <p class="editar-pontos-detalhe" hidden></p>
+                    <div class="acoes-formulario">
+                        <button type="button" class="botao-secundario" data-acao="excluir-ponto-selecionado" hidden>
+                            Excluir ponto selecionado 🗑
+                        </button>
+                    </div>
+                    <div class="acoes-formulario">
+                        <button type="button" class="botao-primario" data-acao="salvar-edicao-pontos">Salvar alterações</button>
+                        <button type="button" data-acao="fechar-editar-pontos">Fechar</button>
+                    </div>
+                </dialog>
+
                 <dialog class="dialogo-estacao">
                     <form class="formulario-estacao">
                         <h2>Nova estação de nível</h2>
@@ -219,6 +235,7 @@ export class PainelProjeto extends HTMLElement {
 
         this._wireExportar();
         this._wirePerimetro();
+        this._wireEditorPontosTrilha();
         this._wireEstacoes();
         this._wireCurvasDeNivel();
         this._wireSaf();
@@ -387,6 +404,10 @@ export class PainelProjeto extends HTMLElement {
                 await plantaTerraDB.removerTrilha(id);
                 await this._renderizarHistoricoPerimetro();
                 await this.recarregarTudo();
+            } else if (botao.dataset.acao === "editar-pontos-perimetro") {
+                const trilha = await plantaTerraDB.obterTrilha(id);
+                dialogo.close();
+                this._abrirEditorPontosTrilha(trilha);
             }
         });
     }
@@ -409,11 +430,130 @@ export class PainelProjeto extends HTMLElement {
                     ${trilha.poligono?.length >= 3 ? formatarArea(areaPoligonoMetros2(trilha.poligono)) : "polígono incompleto"}
                 </span>
                 <span class="acoes-item-historico">
+                    <button type="button" class="botao-secundario" data-acao="editar-pontos-perimetro">Editar pontos</button>
                     ${trilha.ativo ? "" : `<button type="button" class="botao-secundario" data-acao="usar-rodada-perimetro">Usar esta</button>`}
                     <button type="button" class="botao-excluir" data-acao="excluir-rodada-perimetro" aria-label="Excluir">🗑</button>
                 </span>
             </li>
         `).join("");
+    }
+
+    /**
+     * Editor de pontos brutos de uma rodada de captura já salva: mostra cada
+     * ponto no mapa em gradiente (azul = mais antigo, vermelho = mais
+     * recente), permite selecionar um ponto clicando nele e excluí-lo, e só
+     * grava no banco (recalculando o polígono) quando o usuário confirma.
+     */
+    _wireEditorPontosTrilha() {
+        const dialogo = this.querySelector(".dialogo-editar-pontos-trilha");
+        const status = this.querySelector(".editar-pontos-status");
+        const detalhe = this.querySelector(".editar-pontos-detalhe");
+        const botaoExcluirPonto = this.querySelector('[data-acao="excluir-ponto-selecionado"]');
+
+        this.mapaElemento.addEventListener("ponto-trilha-clicado", evento => {
+            if (!this._edicaoPontos) return;
+            this._edicaoPontos.indiceSelecionado = evento.detail.indice;
+            this._renderizarEditorPontosTrilha();
+        });
+
+        botaoExcluirPonto.addEventListener("click", () => {
+            const estado = this._edicaoPontos;
+            if (!estado || estado.indiceSelecionado === null) return;
+            estado.pontos.splice(estado.indiceSelecionado, 1);
+            estado.indiceSelecionado = null;
+            estado.alterado = true;
+            this._renderizarEditorPontosTrilha();
+        });
+
+        this.querySelector('[data-acao="fechar-editar-pontos"]').addEventListener("click", () => {
+            if (this._edicaoPontos?.alterado && !confirm("Descartar as alterações feitas nos pontos desta rodada?")) {
+                return;
+            }
+            this._fecharEditorPontosTrilha();
+        });
+
+        this.querySelector('[data-acao="salvar-edicao-pontos"]').addEventListener("click", async () => {
+            const estado = this._edicaoPontos;
+            if (!estado) return;
+
+            if (estado.pontos.length < 3) {
+                alert("É preciso manter pelo menos 3 pontos para formar um perímetro.");
+                return;
+            }
+
+            const poligono = simplificarTrilha(estado.pontos);
+            if (poligono.length < 3) {
+                alert("Poucos pontos restantes para formar um perímetro. Não é possível salvar.");
+                return;
+            }
+
+            const { fechamentoOk, distanciaFechamento } = avaliarFechamento(poligono);
+            if (!fechamentoOk) {
+                const continuar = confirm(
+                    `O ponto final ficou a ${distanciaFechamento.toFixed(0)} m do ponto inicial — ` +
+                    "pode não ter fechado a volta completa da propriedade. Salvar mesmo assim?"
+                );
+                if (!continuar) return;
+            }
+
+            const trilha = await plantaTerraDB.obterTrilha(estado.trilhaId);
+            await plantaTerraDB.salvarTrilha({ ...trilha, pontos_brutos: estado.pontos, poligono });
+
+            this._fecharEditorPontosTrilha();
+            await this._renderizarHistoricoPerimetro();
+            await this.recarregarTudo();
+        });
+
+        this._editorPontosDialogo = dialogo;
+        this._editorPontosStatus = status;
+        this._editorPontosDetalhe = detalhe;
+        this._editorPontosBotaoExcluir = botaoExcluirPonto;
+    }
+
+    _abrirEditorPontosTrilha(trilha) {
+        const pontos = trilha.pontos_brutos ?? [];
+        this._edicaoPontos = {
+            trilhaId: trilha.id,
+            tMin: pontos[0]?.timestamp,
+            tMax: pontos[pontos.length - 1]?.timestamp,
+            pontos: pontos.slice(),
+            indiceSelecionado: null,
+            alterado: false
+        };
+        this._renderizarEditorPontosTrilha({ ajustarZoom: true });
+        // .show() (não .showModal()) para o mapa continuar clicável por trás
+        // da folha — o usuário precisa poder tocar em vários pontos no mapa
+        // sem fechar o editor a cada seleção.
+        this._editorPontosDialogo.show();
+    }
+
+    _renderizarEditorPontosTrilha({ ajustarZoom = false } = {}) {
+        const estado = this._edicaoPontos;
+        if (!estado) return;
+
+        this._editorPontosStatus.textContent =
+            `${estado.pontos.length} pontos — toque em um ponto no mapa para selecioná-lo.`;
+
+        this.mapaElemento.exibirPontosTrilhaEditavel(estado.pontos, {
+            indiceSelecionado: estado.indiceSelecionado,
+            tMin: estado.tMin,
+            tMax: estado.tMax,
+            ajustarZoom
+        });
+
+        const ponto = estado.indiceSelecionado !== null ? estado.pontos[estado.indiceSelecionado] : null;
+        this._editorPontosDetalhe.hidden = !ponto;
+        this._editorPontosBotaoExcluir.hidden = !ponto;
+        if (ponto) {
+            const precisao = ponto.precisao != null ? `${ponto.precisao.toFixed(0)} m` : "desconhecida";
+            this._editorPontosDetalhe.textContent = `Ponto selecionado: ${formatarData(ponto.timestamp)} — precisão ${precisao}`;
+        }
+    }
+
+    _fecharEditorPontosTrilha() {
+        this._edicaoPontos = null;
+        this.mapaElemento.limparPontosTrilhaEditavel();
+        this._editorPontosDialogo.close();
     }
 
     // ---------------- Estações e leituras ----------------

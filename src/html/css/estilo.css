@@ -425,7 +425,8 @@ dialog::backdrop {
  * visível e centralizado no metro que está sendo editado (ver
  * mapa_projeto.js#destacarSegmentoAtivo).
  */
-dialog.dialogo-planta-metro {
+dialog.dialogo-planta-metro,
+dialog.dialogo-editar-pontos-trilha {
     position: fixed;
     inset: auto 0 0 0;
     margin: 0;
@@ -437,7 +438,17 @@ dialog.dialogo-planta-metro {
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
 }
 
-dialog.dialogo-planta-metro::backdrop {
+/*
+ * dialogo-editar-pontos-trilha usa .show() (não .showModal()) para o mapa
+ * continuar clicável por trás da folha — sem o top layer do modal, precisa
+ * de z-index explícito acima dos controles do Leaflet (z-index: 1000).
+ */
+dialog.dialogo-editar-pontos-trilha {
+    z-index: 1001;
+}
+
+dialog.dialogo-planta-metro::backdrop,
+dialog.dialogo-editar-pontos-trilha::backdrop {
     background: transparent;
 }
 

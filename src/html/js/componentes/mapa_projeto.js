@@ -6,6 +6,16 @@
 
 const CORES_ISOLINHA = ["#2b6cb0", "#2f855a", "#b7791f", "#c05621", "#9b2c2c", "#553c9a"];
 
+// Gradiente usado para mostrar os pontos brutos de uma trilha do mais antigo
+// (azul) ao mais recente (vermelho), ao editar uma rodada de captura.
+const COR_GRADIENTE_INICIO = [49, 130, 206]; // #3182ce
+const COR_GRADIENTE_FIM = [229, 62, 62]; // #e53e3e
+
+function corGradiente(fracao) {
+    const [r, g, b] = COR_GRADIENTE_INICIO.map((c, i) => Math.round(c + (COR_GRADIENTE_FIM[i] - c) * fracao));
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
 export class MapaProjeto extends HTMLElement {
 
     connectedCallback() {
@@ -29,6 +39,7 @@ export class MapaProjeto extends HTMLElement {
         this.camadaLinhaDestacada = L.layerGroup().addTo(this.mapa);
         this.camadaSegmentoAtivo = L.layerGroup().addTo(this.mapa);
         this.camadaTrilhaEmProgresso = L.layerGroup().addTo(this.mapa);
+        this.camadaPontosTrilha = L.layerGroup().addTo(this.mapa);
 
         this._centralizadoAutomaticamente = false;
         this.centralizarNaPosicaoAtual();
@@ -237,6 +248,50 @@ export class MapaProjeto extends HTMLElement {
         this.camadaTrilhaEmProgresso.clearLayers();
         this._linhaTrilhaEmProgresso = null;
         this._marcadorPosicaoAtual = null;
+    }
+
+    /**
+     * Mostra os pontos brutos de uma trilha já salva para edição: um círculo
+     * por ponto, em gradiente do mais antigo (azul) ao mais recente
+     * (vermelho), clicável para selecionar (dispara "ponto-trilha-clicado"
+     * com { indice }). `tMin`/`tMax` fixam a escala do gradiente no intervalo
+     * de tempo original da captura, para as cores não mudarem ao excluir
+     * pontos durante a edição.
+     */
+    exibirPontosTrilhaEditavel(pontos, { indiceSelecionado = null, tMin, tMax, ajustarZoom = false } = {}) {
+        this.camadaPontosTrilha.clearLayers();
+        if (!pontos.length) return;
+
+        const inicio = tMin ?? pontos[0].timestamp;
+        const fim = tMax ?? pontos[pontos.length - 1].timestamp;
+        const amplitude = fim - inicio || 1;
+
+        pontos.forEach((ponto, indice) => {
+            const fracao = Math.min(1, Math.max(0, (ponto.timestamp - inicio) / amplitude));
+            const cor = corGradiente(fracao);
+            const selecionado = indice === indiceSelecionado;
+
+            L.circleMarker([ponto.lat, ponto.lon], {
+                radius: selecionado ? 11 : 6,
+                color: selecionado ? "#1a202c" : cor,
+                weight: selecionado ? 3 : 2,
+                fillColor: cor,
+                fillOpacity: 0.9
+            })
+                .on("click", () => {
+                    this.dispatchEvent(new CustomEvent("ponto-trilha-clicado", { detail: { indice } }));
+                })
+                .addTo(this.camadaPontosTrilha);
+        });
+
+        if (ajustarZoom) {
+            const bounds = L.latLngBounds(pontos.map(p => [p.lat, p.lon]));
+            if (bounds.isValid()) this.mapa.fitBounds(bounds, { padding: [30, 30] });
+        }
+    }
+
+    limparPontosTrilhaEditavel() {
+        this.camadaPontosTrilha.clearLayers();
     }
 
     ajustarZoomParaConteudo() {

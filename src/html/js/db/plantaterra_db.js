@@ -113,6 +113,10 @@ class PlantaTerraDB extends DBBase {
         return this.obterTodos("trilha_perimetro", "index_projeto_id", projetoId);
     }
 
+    async obterTrilha(id) {
+        return this.obterPorChave("trilha_perimetro", id);
+    }
+
     async trilhaAtiva(projetoId) {
         const trilhas = await this.listarTrilhas(projetoId);
         return trilhas.find(t => t.ativo) || null;
