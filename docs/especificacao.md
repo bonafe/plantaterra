@@ -90,9 +90,17 @@ Diferente da captura de um ponto único, aqui o GPS fica ligado continuamente en
    - Efeito colateral aceito: um pequeno atraso (poucos segundos, até a janela encher) entre o início da caminhada e o primeiro ponto confirmado, e entre cada amostra bruta e sua confirmação.
 3. Mapa mostra a trilha sendo desenhada em tempo real (polyline no Leaflet), com a posição atual do usuário destacada (o marcador de posição atual usa a amostra bruta, já filtrada por precisão, sem esperar a janela — só a trilha registrada passa pelo filtro de medóide).
 4. Usuário pode pausar/retomar (ex. parar para almoçar) e apagar o último ponto se caminhar por engano.
-5. Ao apertar "Concluir perímetro": a trilha bruta passa por **simplificação (algoritmo de Douglas-Peucker)** para remover ruído mantendo a forma, e é fechada (conectando o último ponto ao primeiro) para virar um polígono.
+5. Ao apertar "Concluir perímetro": a trilha bruta passa por **simplificação (algoritmo de Douglas-Peucker)** para remover ruído mantendo a forma, e é fechada (conectando o último ponto ao primeiro) para virar um polígono — a menos que o projeto esteja marcado como "terreno convexo" (ver abaixo), caso em que o polígono é calculado por casco convexo.
 6. O polígono resultante fica associado ao projeto e é exibido permanentemente sobre o mapa. Pode ser refeito a qualquer momento (gera uma nova trilha, substituindo ou salvando como versão).
 7. Área do polígono (m² e hectares) é calculada e exibida (fórmula de área geodésica aproximada, ex. shoelace sobre projeção local equirretangular — suficiente para propriedades rurais de porte comum).
+
+### 6.1 Fechamento por casco convexo (terrenos convexos)
+
+Obstáculos na divisa (plantas, cercas, construções) podem forçar a pessoa a desviar para dentro do terreno em alguns trechos da caminhada. Para um terreno **convexo** (todos os ângulos internos < 180°, ex. um retângulo), isso não é um problema: como a pessoa nunca sai para fora da divisa real, os cantos verdadeiros do terreno continuam sendo os pontos mais extremos de tudo que foi capturado. Calcular o **casco convexo** (algoritmo de Andrew, "monotone chain", `js/geo/casco_convexo.js#calcularCascoConvexo`) do conjunto de pontos brutos reconstrói exatamente a divisa real, descartando automaticamente qualquer desvio para dentro — diferente da simplificação por Douglas-Peucker, que só simplifica a forma do caminho efetivamente andado (preservando os desvios).
+
+Essa técnica **não é válida para terrenos com reentrâncias** (qualquer ângulo interno reflexo, > 180°, ex. um formato em L): o casco convexo preencheria a reentrância incorretamente, aumentando a área. Por isso é uma opção explícita, não o padrão.
+
+Convexidade é uma característica do terreno, não de uma rodada de captura — por isso é uma configuração do **projeto** (`projeto.terreno_convexo`, ver §8), não uma escolha por rodada. Ao ligar ou desligar essa configuração, o polígono de **todas** as rodadas já salvas do projeto é recalculado e regravado na hora (com o método correspondente), não só as rodadas futuras. Uma rodada onde o resultado teria menos de 3 pontos é deixada como estava. O editor de pontos brutos de uma rodada já salva (acessível pelo histórico de rodadas) também usa esse método ao recalcular o polígono ao salvar, e mostra uma prévia tracejada do casco convexo candidato enquanto pontos são excluídos.
 
 ## 7. Geração das curvas de nível
 
@@ -119,6 +127,7 @@ Um único banco `PlantaTerraDB`, com as seguintes object stores:
   id: uuid,
   nome: string,
   descricao: string,
+  terreno_convexo: boolean,   // ver secao 6.1 — fecha o perimetro por casco convexo em vez de Douglas-Peucker
   criado_em: timestamp,
   atualizado_em: timestamp
 }
@@ -358,8 +367,8 @@ src/html/                     # aplicação (código antigo do protótipo foi re
     main.js
     componentes/              # web components (custom elements): mapa, captura GPS, painéis, editor de linha
     dominio/                  # regras de negócio: nivelamento.js (§4), saf.js (§14.3)
-    geo/                      # geodesia.js, douglas_peucker.js, idw.js, marching_squares.js,
-                               # curvas_de_nivel.js, segmentador_linha.js (§14.5)
+    geo/                      # geodesia.js, douglas_peucker.js, casco_convexo.js (§6.1), idw.js,
+                               # marching_squares.js, curvas_de_nivel.js, segmentador_linha.js (§14.5)
     gps/                      # captador de coordenada estabilizada (§5), captador de trilha (§6)
     kml/                      # leitura/escrita de KML/KMZ (§14.3, §14.4)
     db/                       # camada IndexedDB + exportadores (backup, GeoJSON/KML/KMZ)

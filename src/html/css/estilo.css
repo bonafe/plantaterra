@@ -459,11 +459,17 @@ dialog label {
     color: var(--cor-texto-suave);
 }
 
-dialog label.campo-checkbox {
+label.campo-checkbox {
     display: flex;
     align-items: center;
     gap: 8px;
     font-weight: normal;
+}
+
+.ajuda-campo {
+    margin: 4px 0 12px 0;
+    font-size: 0.9rem;
+    color: var(--cor-texto-suave);
 }
 
 dialog input[type="text"],

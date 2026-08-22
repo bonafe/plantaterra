@@ -10,6 +10,7 @@ import {
 } from "../dominio/nivelamento.js";
 import { gerarCurvasDeNivel } from "../geo/curvas_de_nivel.js";
 import { simplificarTrilha, avaliarFechamento } from "../geo/douglas_peucker.js";
+import { calcularCascoConvexo } from "../geo/casco_convexo.js";
 import { areaPoligonoMetros2 } from "../geo/geodesia.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
@@ -70,6 +71,15 @@ export class PainelProjeto extends HTMLElement {
                                 <h2>Perímetro</h2>
                                 <span class="area-perimetro"></span>
                             </div>
+                            <label class="campo-checkbox">
+                                <input type="checkbox" name="terreno_convexo" />
+                                Meu terreno é convexo (sem reentrâncias)
+                            </label>
+                            <p class="ajuda-campo">
+                                Marque se o terreno não tem "cantos para dentro" (ex: um retângulo). O perímetro passa a
+                                ser fechado pelos pontos mais externos que você caminhou, mesmo que tenha desviado de
+                                plantas ou obstáculos em alguns trechos da divisa.
+                            </p>
                             <button type="button" data-acao="mapear-perimetro" class="botao-secundario botao-largo">
                                 Mapear perímetro caminhando
                             </button>
@@ -234,6 +244,7 @@ export class PainelProjeto extends HTMLElement {
         this.capturaGps = this.querySelector("captura-gps");
 
         this._wireExportar();
+        this._wireTerrenoConvexo();
         this._wirePerimetro();
         this._wireEditorPontosTrilha();
         this._wireEstacoes();
@@ -296,6 +307,39 @@ export class PainelProjeto extends HTMLElement {
         });
     }
 
+    // ---------------- Terreno convexo ----------------
+
+    /**
+     * Convexidade é uma característica do terreno, não de uma rodada de
+     * captura específica — por isso é uma configuração do projeto (não do
+     * editor de pontos), e alterá-la recalcula na hora o polígono de todas
+     * as rodadas já salvas (ver docs/especificacao.md secao 6).
+     */
+    _wireTerrenoConvexo() {
+        const checkbox = this.querySelector('[name="terreno_convexo"]');
+        checkbox.checked = !!this.projeto.terreno_convexo;
+
+        checkbox.addEventListener("change", async () => {
+            const convexo = checkbox.checked;
+            this.projeto = await plantaTerraDB.salvar("projeto", {
+                ...this.projeto,
+                terreno_convexo: convexo,
+                atualizado_em: Date.now()
+            });
+
+            const trilhas = await plantaTerraDB.listarTrilhas(this.projetoId);
+            await Promise.all(trilhas.map(trilha => {
+                const poligono = convexo
+                    ? calcularCascoConvexo(trilha.pontos_brutos)
+                    : simplificarTrilha(trilha.pontos_brutos);
+                if (poligono.length < 3) return null;
+                return plantaTerraDB.salvarTrilha({ ...trilha, poligono });
+            }));
+
+            await this.recarregarTudo();
+        });
+    }
+
     // ---------------- Perímetro ----------------
 
     _wirePerimetro() {
@@ -347,12 +391,16 @@ export class PainelProjeto extends HTMLElement {
             this.mapaElemento.pararTrilhaEmProgresso();
             dialogo.close();
 
-            if (resultado.poligono.length < 3) {
+            const poligono = this.projeto.terreno_convexo
+                ? calcularCascoConvexo(resultado.pontos_brutos)
+                : resultado.poligono;
+
+            if (poligono.length < 3) {
                 alert("Poucos pontos capturados para formar um perímetro. Tente novamente.");
                 return;
             }
 
-            if (!resultado.fechamentoOk) {
+            if (!this.projeto.terreno_convexo && !resultado.fechamentoOk) {
                 const continuar = confirm(
                     `O ponto final ficou a ${resultado.distanciaFechamento.toFixed(0)} m do ponto inicial — ` +
                     "pode não ter fechado a volta completa da propriedade. Salvar mesmo assim?"
@@ -367,7 +415,7 @@ export class PainelProjeto extends HTMLElement {
             await plantaTerraDB.salvarTrilha({
                 projeto_id: this.projetoId,
                 pontos_brutos: resultado.pontos_brutos,
-                poligono: resultado.poligono,
+                poligono,
                 ativo: true,
                 criado_em: Date.now()
             });
@@ -481,19 +529,24 @@ export class PainelProjeto extends HTMLElement {
                 return;
             }
 
-            const poligono = simplificarTrilha(estado.pontos);
+            const poligono = this.projeto.terreno_convexo
+                ? calcularCascoConvexo(estado.pontos)
+                : simplificarTrilha(estado.pontos);
+
             if (poligono.length < 3) {
                 alert("Poucos pontos restantes para formar um perímetro. Não é possível salvar.");
                 return;
             }
 
-            const { fechamentoOk, distanciaFechamento } = avaliarFechamento(poligono);
-            if (!fechamentoOk) {
-                const continuar = confirm(
-                    `O ponto final ficou a ${distanciaFechamento.toFixed(0)} m do ponto inicial — ` +
-                    "pode não ter fechado a volta completa da propriedade. Salvar mesmo assim?"
-                );
-                if (!continuar) return;
+            if (!this.projeto.terreno_convexo) {
+                const { fechamentoOk, distanciaFechamento } = avaliarFechamento(poligono);
+                if (!fechamentoOk) {
+                    const continuar = confirm(
+                        `O ponto final ficou a ${distanciaFechamento.toFixed(0)} m do ponto inicial — ` +
+                        "pode não ter fechado a volta completa da propriedade. Salvar mesmo assim?"
+                    );
+                    if (!continuar) return;
+                }
             }
 
             const trilha = await plantaTerraDB.obterTrilha(estado.trilhaId);
@@ -548,10 +601,17 @@ export class PainelProjeto extends HTMLElement {
             const precisao = ponto.precisao != null ? `${ponto.precisao.toFixed(0)} m` : "desconhecida";
             this._editorPontosDetalhe.textContent = `Ponto selecionado: ${formatarData(ponto.timestamp)} — precisão ${precisao}`;
         }
+
+        if (this.projeto.terreno_convexo) {
+            this.mapaElemento.definirPreviaPoligono(calcularCascoConvexo(estado.pontos));
+        } else {
+            this.mapaElemento.limparPreviaPoligono();
+        }
     }
 
     _fecharEditorPontosTrilha() {
         this._edicaoPontos = null;
+        this.mapaElemento.limparPreviaPoligono();
         this.mapaElemento.limparPontosTrilhaEditavel();
         this._editorPontosDialogo.close();
     }

@@ -40,6 +40,7 @@ export class MapaProjeto extends HTMLElement {
         this.camadaSegmentoAtivo = L.layerGroup().addTo(this.mapa);
         this.camadaTrilhaEmProgresso = L.layerGroup().addTo(this.mapa);
         this.camadaPontosTrilha = L.layerGroup().addTo(this.mapa);
+        this.camadaPreviaPoligono = L.layerGroup().addTo(this.mapa);
 
         this._centralizadoAutomaticamente = false;
         this.centralizarNaPosicaoAtual();
@@ -292,6 +293,23 @@ export class MapaProjeto extends HTMLElement {
 
     limparPontosTrilhaEditavel() {
         this.camadaPontosTrilha.clearLayers();
+    }
+
+    /**
+     * Prévia (tracejada) de um polígono candidato ainda não salvo — usada no
+     * editor de pontos quando o projeto é marcado como terreno convexo, para
+     * mostrar o casco convexo resultante antes de confirmar o salvamento.
+     */
+    definirPreviaPoligono(poligono) {
+        this.camadaPreviaPoligono.clearLayers();
+        if (!poligono || poligono.length < 3) return;
+
+        const latLngs = poligono.map(p => [p.lat, p.lon]);
+        L.polygon(latLngs, { color: "#38a169", weight: 2, dashArray: "6 4", fillOpacity: 0.05 }).addTo(this.camadaPreviaPoligono);
+    }
+
+    limparPreviaPoligono() {
+        this.camadaPreviaPoligono.clearLayers();
     }
 
     ajustarZoomParaConteudo() {
