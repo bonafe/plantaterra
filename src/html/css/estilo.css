@@ -52,8 +52,12 @@ body {
     text-align: center;
     font-size: 0.7rem;
     color: var(--cor-texto-suave);
-    padding: 3px 0 calc(3px + env(safe-area-inset-bottom));
+    padding: 4px 0 calc(4px + env(safe-area-inset-bottom));
     background: var(--cor-secundaria);
+}
+
+.rodape-versao a {
+    color: var(--cor-texto-suave);
 }
 
 h1, h2 {
@@ -112,6 +116,9 @@ button {
     text-decoration: none;
     color: var(--cor-texto);
     padding: 0 4px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
 }
 
 .botao-excluir {
@@ -157,6 +164,70 @@ button {
     max-width: 640px;
     margin: 0 auto;
     width: 100%;
+}
+
+.tela-apoiar {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.painel-apoiar {
+    padding: 16px;
+    max-width: 480px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.pix-painel {
+    margin-top: var(--espaco);
+    text-align: center;
+}
+
+.pix-valores {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.pix-valor-btn {
+    min-height: 44px;
+    padding: 8px 16px;
+    border-radius: var(--raio);
+    border: 2px solid var(--cor-primaria);
+    background: #fff;
+    color: var(--cor-primaria-escura);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.pix-valor-btn.ativo {
+    background: var(--cor-primaria);
+    color: #fff;
+}
+
+.pix-qr {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.pix-copia-manual {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px;
+    border: 1px solid var(--cor-borda);
+    border-radius: 6px;
+    font: inherit;
+    text-align: center;
+}
+
+.pix-indisponivel {
+    color: var(--cor-texto-suave);
 }
 
 .acoes-lista-projetos {

@@ -1,6 +1,6 @@
 // Mantenha sincronizado com VERSAO_APP em js/versao.js (rodapé do app) —
 // bump os dois juntos a cada release, ver docs/especificacao.md secao 10.
-const VERSAO_APP = "11";
+const VERSAO_APP = "12";
 const VERSAO_CACHE = `plantaterra-v${VERSAO_APP}`;
 const CACHE_TILES = "plantaterra-tiles-v1";
 
@@ -15,7 +15,10 @@ const ARQUIVOS_DO_APP = [
     "./js/componentes/lista_projetos.js",
     "./js/componentes/mapa_projeto.js",
     "./js/componentes/painel_projeto.js",
+    "./js/componentes/tela_apoiar.js",
     "./js/componentes/util_dom.js",
+    "./js/dados_apoio.js",
+    "./js/feedback_whatsapp.js",
     "./js/db/db_base.js",
     "./js/db/exportador_projeto.js",
     "./js/db/exportador_geoespacial.js",
@@ -43,7 +46,8 @@ const ARQUIVOS_DO_APP = [
     "./vendor/leaflet/images/marker-icon.png",
     "./vendor/leaflet/images/marker-icon-2x.png",
     "./vendor/leaflet/images/marker-shadow.png",
-    "./vendor/fflate/fflate.js"
+    "./vendor/fflate/fflate.js",
+    "./vendor/qrcode/qrcode.min.js"
 ];
 
 self.addEventListener("install", evento => {

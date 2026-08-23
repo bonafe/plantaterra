@@ -206,6 +206,25 @@ Além dele, o projeto pode ser exportado em **GeoJSON** e **KML/KMZ** para uso e
 - **Idioma**: pt-BR em toda a interface.
 - **Versionamento visível**: o rodapé de todas as telas mostra a versão do app (`js/versao.js`, constante `VERSAO_APP`), para o usuário confirmar visualmente que uma atualização já chegou ao aparelho. Precisa ser incrementada a cada release **junto com** `VERSAO_APP`/`VERSAO_CACHE` em `sw.js` — é o bump do cache do service worker que faz o app shell realmente trocar de versão; sem isso o rodapé mentiria (mostraria a versão nova enquanto o cache ainda serve os arquivos antigos).
 
+## 11. Apoio ao projeto (Pix) e feedback (WhatsApp)
+
+Inspirado no mesmo mecanismo já usado no projeto irmão (Nosso Treino): dois links discretos no rodapé, presentes em toda tela do app, sem popup nem gatilho — decisão explícita, diferente do banner pós-uso do outro projeto, porque o PlantaTerra não tem um "momento de conclusão" natural (não é uma sessão de treino).
+
+### 11.1 "❤️ Apoiar" — painel de apoio via Pix
+
+Link pro roteador interno (`#/apoiar`, `js/componentes/tela_apoiar.js`), sempre visível no rodapé (`js/main.js`). Mesma filosofia do Nosso Treino: o código só **exibe** strings "Pix copia e cola" já prontas, geradas no app do banco/PSP — nunca constrói ou calcula o payload (um payload Pix errado falha na validação de quem for pagar, não é algo pra reinventar).
+
+- `js/dados_apoio.js` (`OPCOES_PIX`): lista de `{ valor, payload }` — um valor sugerido por opção, mais uma de valor livre (`valor: null`). `payload: null` esconde a opção até existir a string real. **Hoje todos os `payload` são `null` (placeholder, TODO)** — preencher com as strings reais antes de divulgar o link.
+- QR Code gerado no navegador a partir do payload selecionado, biblioteca vendorizada (`vendor/qrcode/qrcode.min.js`, `davidshimjs/qrcodejs`, MIT — mesmo padrão de `vendor/leaflet/`, nunca CDN).
+- Botão de copiar (`navigator.clipboard.writeText`, com fallback pra um `<input readonly>` selecionável se a Clipboard API não estiver disponível — nunca falha silenciosamente).
+- Sem nenhuma opção com `payload` preenchido, mostra "Chave Pix ainda sendo configurada" em vez de uma tela quebrada.
+
+### 11.2 "💬 Relatar" — feedback via WhatsApp
+
+Link direto (`<a href="https://wa.me/...">`, sem JS necessário pra abrir) com uma mensagem pré-preenchida, que a pessoa revisa/completa antes de enviar — sem backend, sem formulário. `js/feedback_whatsapp.js` monta a mensagem e a URL. **Número de WhatsApp ainda é um placeholder (`NUMERO_WHATSAPP_FEEDBACK`, TODO)** — configurar antes de divulgar (formato E.164 sem `+`/espaço/traço, exigido por `wa.me`).
+
+Diferente do Nosso Treino (que tem um botão de crítica por item da biblioteca, com uma tag `[ref:...]` na mensagem pra rastrear qual item), o PlantaTerra não tem uma "biblioteca" de itens individuais — por isso é um único ponto de acesso genérico no rodapé, sem categoria nem tag de referência. Se o projeto ganhar algo equivalente a uma biblioteca no futuro (ex: catálogo de espécies, §15), vale reconsiderar o padrão por-item.
+
 ## 14. SAF (Sistemas Agroflorestais) e Linhas de Plantio
 
 ### 14.1 Motivação e contexto
@@ -371,7 +390,9 @@ src/html/                     # aplicação (código antigo do protótipo foi re
   css/
   js/
     main.js
-    componentes/              # web components (custom elements): mapa, captura GPS, painéis, editor de linha
+    dados_apoio.js            # strings Pix "copia e cola" (§11.1)
+    feedback_whatsapp.js      # link de feedback via WhatsApp (§11.2)
+    componentes/              # web components (custom elements): mapa, captura GPS, painéis, editor de linha, apoiar
     dominio/                  # regras de negócio: nivelamento.js (§4), saf.js (§14.3)
     geo/                      # geodesia.js, douglas_peucker.js, casco_convexo.js (§6.1), idw.js,
                                # marching_squares.js, curvas_de_nivel.js, segmentador_linha.js (§14.5)
@@ -381,6 +402,7 @@ src/html/                     # aplicação (código antigo do protótipo foi re
   vendor/
     leaflet/
     fflate/                   # zip/unzip para KMZ
+    qrcode/                   # QR Code do painel de apoio (§11.1)
 docs/
   especificacao.md            # este arquivo
 ```
