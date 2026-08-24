@@ -225,6 +225,27 @@ Link direto (`<a href="https://wa.me/...">`, sem JS necessário pra abrir) com u
 
 Diferente do Nosso Treino (que tem um botão de crítica por item da biblioteca, com uma tag `[ref:...]` na mensagem pra rastrear qual item), o PlantaTerra não tem uma "biblioteca" de itens individuais — por isso é um único ponto de acesso genérico no rodapé, sem categoria nem tag de referência. Se o projeto ganhar algo equivalente a uma biblioteca no futuro (ex: catálogo de espécies, §15), vale reconsiderar o padrão por-item.
 
+### 11.3 Landing page (raiz do repositório)
+
+`index.html` **na raiz do repositório** (irmão de `src/`, `docs/`) — página institucional separada do app, inspirada na mesma página do Nosso Treino: objetivo, princípios, painel de apoio, "quem faz", link pro código, privacidade. Diferente das demais páginas do projeto, não é uma PWA nem tem `manifest.json`/service worker próprios — é uma página estática simples, com seu próprio `<style>` inline (não compartilha `src/html/css/estilo.css`, que tem muito CSS específico do app que não se aplica aqui).
+
+- Botão principal "Abrir o PlantaTerra" leva pra `./src/html/` (o app de verdade). O service worker do app é registrado a partir de `src/html/js/main.js` com escopo `src/html/` — não controla nem tenta cachear a landing page, escopos diferentes, sem conflito.
+- O painel de apoio via Pix é **o mesmo módulo compartilhado** do app (`src/html/js/apoio_pix.js`, usado também por `<tela-apoiar>`) — evita duplicar a lógica de QR Code/cópia em dois lugares. A landing importa esse módulo e os outros compartilhados (`feedback_whatsapp.js`, `consentimento_analytics.js`) por caminho relativo (`./src/html/js/...`).
+- Também mostra o banner de consentimento de analytics (§12) — é a página raiz do domínio, então precisa ser medida como qualquer outra.
+- Não entra no precache do service worker do app (fora do escopo dele); é servida normalmente pelo GitHub Pages a cada visita.
+
+## 12. Analytics de uso (Google Analytics, opt-in)
+
+Mesma estratégia já usada e validada no projeto irmão (Nosso Treino), replicada aqui: saber quantas pessoas usam o PlantaTerra e quais telas usam mais, **sem** abrir mão da promessa de que dado de domínio (projetos, perímetros, pontos, curvas de nível — tudo no IndexedDB do aparelho) nunca sai do dispositivo. São dois mecanismos completamente separados; um nunca alimenta o outro.
+
+- **Coletado, só com autorização**: pageview padrão do GA4 (`gtag.js`) — qual tela foi aberta, referência de origem, tipo de dispositivo. Sem eventos customizados por enquanto (ex: "perímetro capturado").
+- **Nunca coletado**, com ou sem autorização: nome/dados de projeto, perímetro, pontos, curvas de nível — nenhum conteúdo do IndexedDB é passado ao script do GA em nenhum lugar do código.
+- **Consentimento em `localStorage` puro** (`js/consentimento_analytics.js`, chave `plantaTerraConsentimentoAnalytics`, valores `"aceito"`/`"recusado"`) — **primeiro e único uso de `localStorage` no projeto** (todo o resto do dado do usuário é IndexedDB, ver §8). Fica fora do IndexedDB de propósito: é preferência de navegador, não dado de domínio, não precisa de migração de esquema nem de esperar a hidratação do banco.
+- **Nenhuma resposta ainda**: banner fixo não bloqueante (`.analytics-banner`) aparece assim que o app carrega, em qualquer tela — o app funciona normalmente mesmo sem responder. "Aceitar" grava o consentimento e injeta o `gtag.js` do Google. "Recusar" grava e não carrega nenhum script do Google — nenhuma requisição sai pra domínio do Google antes do aceite. Resposta já dada: banner não aparece mais, em nenhuma tela, até a pessoa limpar os dados do navegador (sem tela de "mudar de ideia" por enquanto).
+- **Sem Consent Mode do Google** (que carregaria o `gtag.js` sempre, com pings "cookieless" antes mesmo da resposta) — decisão deliberada: nenhum script do Google é carregado, nenhuma requisição sai, até o clique em "Aceitar".
+- `MEASUREMENT_ID` em `js/consentimento_analytics.js` aponta pra propriedade GA4 "Planta Terra" (fluxo web `https://bonafe.github.io/plantaterra/`, código de fluxo `15489380468`, ID de métrica `G-JR0X3JBSER`).
+- `js/consentimento_analytics.js` entra no precache do service worker como qualquer outro módulo local; o script externo do Google (`googletagmanager.com`) não é precacheado — `sw.js` só intercepta GET de mesma origem, então offline a chamada ao GA falha silenciosamente sem quebrar a tela.
+
 ## 14. SAF (Sistemas Agroflorestais) e Linhas de Plantio
 
 ### 14.1 Motivação e contexto
@@ -392,6 +413,7 @@ src/html/                     # aplicação (código antigo do protótipo foi re
     main.js
     dados_apoio.js            # strings Pix "copia e cola" (§11.1)
     feedback_whatsapp.js      # link de feedback via WhatsApp (§11.2)
+    consentimento_analytics.js # banner opt-in + carga do gtag.js (§12)
     componentes/              # web components (custom elements): mapa, captura GPS, painéis, editor de linha, apoiar
     dominio/                  # regras de negócio: nivelamento.js (§4), saf.js (§14.3)
     geo/                      # geodesia.js, douglas_peucker.js, casco_convexo.js (§6.1), idw.js,

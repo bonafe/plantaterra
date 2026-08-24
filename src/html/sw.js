@@ -1,6 +1,6 @@
 // Mantenha sincronizado com VERSAO_APP em js/versao.js (rodapé do app) —
 // bump os dois juntos a cada release, ver docs/especificacao.md secao 10.
-const VERSAO_APP = "12";
+const VERSAO_APP = "14";
 const VERSAO_CACHE = `plantaterra-v${VERSAO_APP}`;
 const CACHE_TILES = "plantaterra-tiles-v1";
 
@@ -17,6 +17,8 @@ const ARQUIVOS_DO_APP = [
     "./js/componentes/painel_projeto.js",
     "./js/componentes/tela_apoiar.js",
     "./js/componentes/util_dom.js",
+    "./js/apoio_pix.js",
+    "./js/consentimento_analytics.js",
     "./js/dados_apoio.js",
     "./js/feedback_whatsapp.js",
     "./js/db/db_base.js",

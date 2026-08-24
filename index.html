@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>PlantaTerra</title>
+    <meta name="description" content="Mapeamento de perímetro e curva de nível de propriedades rurais, usando só o celular — GPS e nível a laser. Gratuito, de código aberto, offline em campo." />
+    <meta name="theme-color" content="#2f855a" />
+    <link rel="icon" href="./src/html/icons/icone-192.png" />
+
+    <script src="./src/html/vendor/qrcode/qrcode.min.js"></script>
+
+    <style>
+        :root {
+            --cor-primaria: #2f855a;
+            --cor-primaria-escura: #22543d;
+            --cor-secundaria: #edf2f7;
+            --cor-texto: #1a202c;
+            --cor-texto-suave: #4a5568;
+            --cor-borda: #cbd5e0;
+            --raio: 10px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            color: var(--cor-texto);
+            background: #fff;
+            line-height: 1.5;
+        }
+
+        main {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 0 20px 40px;
+        }
+
+        header.hero {
+            text-align: center;
+            padding: 48px 20px 32px;
+        }
+
+        header.hero h1 {
+            font-size: 2rem;
+            margin: 0 0 8px;
+        }
+
+        header.hero p {
+            color: var(--cor-texto-suave);
+            font-size: 1.1rem;
+            margin: 0 0 24px;
+        }
+
+        .botao-primario,
+        .botao-secundario {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-height: 48px;
+            padding: 10px 20px;
+            border-radius: var(--raio);
+            border: 2px solid transparent;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1rem;
+            text-decoration: none;
+        }
+
+        .botao-primario {
+            background: var(--cor-primaria);
+            color: #fff;
+        }
+
+        .botao-secundario {
+            background: #fff;
+            border-color: var(--cor-primaria);
+            color: var(--cor-primaria-escura);
+        }
+
+        section.painel {
+            border-top: 1px solid var(--cor-borda);
+            padding: 28px 0;
+        }
+
+        section.painel h2 {
+            margin: 0 0 12px;
+            font-size: 1.3rem;
+        }
+
+        ul.principios {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        ul.principios li {
+            padding: 8px 0 8px 28px;
+            position: relative;
+        }
+
+        ul.principios li::before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: var(--cor-primaria);
+            font-weight: 700;
+        }
+
+        .pix-painel {
+            margin-top: 16px;
+            text-align: center;
+        }
+
+        .pix-valores {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .pix-valor-btn {
+            min-height: 44px;
+            padding: 8px 16px;
+            border-radius: var(--raio);
+            border: 2px solid var(--cor-primaria);
+            background: #fff;
+            color: var(--cor-primaria-escura);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .pix-valor-btn.ativo {
+            background: var(--cor-primaria);
+            color: #fff;
+        }
+
+        .pix-qr {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+
+        .pix-copia-manual {
+            width: 100%;
+            margin-top: 8px;
+            padding: 10px;
+            border: 1px solid var(--cor-borda);
+            border-radius: 6px;
+            font: inherit;
+            text-align: center;
+        }
+
+        .pix-indisponivel {
+            color: var(--cor-texto-suave);
+        }
+
+        footer.rodape {
+            text-align: center;
+            padding: 20px;
+            font-size: 0.85rem;
+            color: var(--cor-texto-suave);
+            border-top: 1px solid var(--cor-borda);
+        }
+
+        footer.rodape a {
+            color: var(--cor-texto-suave);
+        }
+
+        .analytics-banner {
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            bottom: calc(12px + env(safe-area-inset-bottom));
+            z-index: 10;
+            max-width: 480px;
+            margin: 0 auto;
+            background: var(--cor-secundaria);
+            color: var(--cor-texto);
+            border: 1px solid var(--cor-borda);
+            border-radius: var(--raio);
+            padding: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+        }
+
+        .analytics-banner p {
+            margin: 0 0 12px;
+            font-size: 0.9rem;
+        }
+
+        .analytics-banner-acoes {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #1a202c;
+                color: #edf2f7;
+            }
+            :root {
+                --cor-texto: #edf2f7;
+                --cor-texto-suave: #a0aec0;
+                --cor-borda: #2d3748;
+                --cor-secundaria: #2d3748;
+            }
+            .botao-secundario,
+            .pix-valor-btn {
+                background: #2d3748;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <header class="hero">
+            <h1>🌱 PlantaTerra</h1>
+            <p>Mapeie o perímetro e a curva de nível da sua propriedade usando só o celular — GPS e um nível a laser.</p>
+            <a class="botao-primario" href="./src/html/">Abrir o PlantaTerra →</a>
+        </header>
+
+        <section class="painel">
+            <h2>O que é</h2>
+            <p>
+                Um app de campo (funciona offline, instalável no celular) para caminhar pela
+                divisa de um terreno com o GPS ligado e gerar o polígono do perímetro, medir
+                a curva de nível combinando GPS com um nível a laser rotativo, e organizar
+                sistemas agroflorestais e linhas de plantio — tudo desenhado sobre um mapa
+                real, exportável para GeoJSON e KML/KMZ (QGIS, Google Earth).
+            </p>
+        </section>
+
+        <section class="painel">
+            <h2>Nossos princípios</h2>
+            <ul class="principios">
+                <li><strong>Gratuito.</strong> Sem assinatura, sem anúncio, sem venda de dados.</li>
+                <li><strong>Seus dados são só seus.</strong> Tudo fica no seu aparelho (local-first); nada sai dele a menos que você exporte manualmente.</li>
+                <li><strong>Funciona no campo, sem sinal.</strong> PWA instalável, com mapa e ferramentas disponíveis offline depois da primeira visita.</li>
+                <li><strong>Código aberto.</strong> Qualquer pessoa pode ler, rodar e melhorar.</li>
+            </ul>
+        </section>
+
+        <section class="painel" id="apoio">
+            <h2>Apoie o projeto</h2>
+            <p>
+                O PlantaTerra é gratuito e de código aberto, e vai continuar assim. Se ele te
+                ajudou a mapear sua propriedade, uma contribuição via Pix ajuda a manter o
+                domínio, o tempo de desenvolvimento e novas funcionalidades — mas nunca é
+                necessária pra usar o app.
+            </p>
+            <div id="apoio-pix-container"></div>
+        </section>
+
+        <section class="painel">
+            <h2>Quem faz o PlantaTerra?</h2>
+            <p>
+                Sou Bonafé, programador. Criei o PlantaTerra pra resolver um problema bem
+                concreto — mapear e planejar minha própria propriedade rural sem depender de
+                equipamento caro ou software fechado — e resolvi deixá-lo aberto e gratuito
+                pra quem mais precisar da mesma coisa.
+            </p>
+        </section>
+
+        <section class="painel">
+            <h2>Código aberto</h2>
+            <p>
+                Todo o código roda no seu navegador e está disponível publicamente no GitHub.
+                Sugestões, correções e contribuições são bem-vindas.
+            </p>
+            <p><a href="https://github.com/bonafe/plantaterra">Ver o código no GitHub →</a></p>
+        </section>
+
+        <section class="painel">
+            <h2>Privacidade</h2>
+            <p>
+                O PlantaTerra não tem servidor guardando os seus dados: os projetos,
+                perímetros, pontos e curvas de nível ficam salvos só no navegador do seu
+                aparelho (IndexedDB). Nada é enviado a menos que você exporte um arquivo
+                manualmente. Um recurso futuro opcional e pago (sincronização entre
+                aparelhos via servidor) pode um dia existir, mas nunca substitui nem exige o
+                uso local — que continua gratuito pra sempre.
+            </p>
+        </section>
+    </main>
+
+    <footer class="rodape">
+        <a href="./src/html/">Abrir o PlantaTerra</a> ·
+        <a id="link-feedback" href="#" target="_blank" rel="noopener">💬 Relatar</a> ·
+        <a href="https://github.com/bonafe/plantaterra">GitHub</a>
+    </footer>
+
+    <script type="module">
+        import { markupPainelPix, montarPainelPix } from "./src/html/js/apoio_pix.js";
+        import { urlFeedbackWhatsApp } from "./src/html/js/feedback_whatsapp.js";
+        import "./src/html/js/consentimento_analytics.js";
+
+        const containerPix = document.getElementById("apoio-pix-container");
+        containerPix.innerHTML = markupPainelPix();
+        montarPainelPix(containerPix);
+
+        document.getElementById("link-feedback").href = urlFeedbackWhatsApp();
+    </script>
+</body>
+</html>

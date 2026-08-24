@@ -521,6 +521,35 @@ dialog {
     width: calc(100% - 40px);
 }
 
+.analytics-banner {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(40px + env(safe-area-inset-bottom));
+    z-index: 1001;
+    max-width: 480px;
+    margin: 0 auto;
+    background: var(--cor-secundaria);
+    color: var(--cor-texto);
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    padding: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.analytics-banner p {
+    margin: 0 0 12px;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.analytics-banner-acoes {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 dialog::backdrop {
     background: rgba(0, 0, 0, 0.5);
 }

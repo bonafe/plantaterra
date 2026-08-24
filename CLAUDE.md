@@ -6,15 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PlantaTerra — PWA (mobile-first) para mapear o perímetro de uma propriedade rural e sua curva de nível usando só o celular: GPS para o perímetro e pontos de leitura, um nível a laser rotativo para altitude relativa. Também gerencia SAF (Sistemas Agroflorestais) e linhas de plantio. Site estático em português, sem build step, sem backend. Vanilla JS (ES modules), CSS puro. Roda 100% no navegador — todo dado do usuário fica só no IndexedDB do próprio aparelho; nada sai do dispositivo a menos que o usuário exporte manualmente. Ver `docs/especificacao.md` para a spec completa e viva do domínio (nivelamento ótico, algoritmos de geo, modelo de dados) — este arquivo é só o mapa de arquitetura/convenções para trabalhar no código, não repete a spec.
 
+Repositório tem duas partes: `index.html` **na raiz** é a landing page institucional (objetivo, princípios, apoio, privacidade — sem PWA, sem service worker próprio); o app de verdade vive em `src/html/` (`https://bonafe.github.io/plantaterra/src/html/`). Publicado via GitHub Pages a partir da raiz do branch `main`. Ver `docs/especificacao.md` §11.3.
+
 ## Comandos
 
-Sem build, sem bundler, sem `package.json`. Para testar localmente:
+Sem build, sem bundler, sem `package.json`. Para testar localmente (a partir da raiz do repositório, pra servir tanto a landing page quanto o app):
 
 ```
-cd src/html && python3 -m http.server 8080
+python3 -m http.server 8080
 ```
 
-Abre em `http://localhost:8080/`. Para testar num celular na mesma rede Wi-Fi, use o IP local da máquina (`hostname -I`) em vez de `localhost`. O service worker (`sw.js`) exige HTTPS ou `localhost` — não funciona por IP puro em alguns navegadores; para depurar cache/offline, teste via `localhost`.
+Abre `http://localhost:8080/` pra landing page, `http://localhost:8080/src/html/` pra o app direto. Para testar num celular na mesma rede Wi-Fi, use o IP local da máquina (`hostname -I`) em vez de `localhost`. O service worker (`sw.js`) exige HTTPS ou `localhost` — não funciona por IP puro em alguns navegadores; para depurar cache/offline, teste via `localhost`.
 
 Não há linter, testes automatizados ou framework de build. Verificação de sintaxe: `node --check <arquivo>` nos arquivos tocados. Sem suíte de testes — mudanças de UI são verificadas testando manualmente no navegador (emulação mobile + toque real via Puppeteer contra o Chrome instalado é o padrão usado nesta sessão quando não há acesso a um dispositivo real).
 
@@ -43,7 +45,8 @@ Não há linter, testes automatizados ou framework de build. Verificação de si
 - `src/html/js/dominio/` — regras de negócio que não são geometria pura: `nivelamento.js` (cálculo de altitude relativa), `saf.js` (parsing de nome de linha de plantio).
 - `src/html/css/estilo.css` — único arquivo de CSS, sem pré-processador.
 - `docs/especificacao.md` — a spec viva do domínio. **Ao mudar comportamento coberto por uma seção, atualize a seção junto no mesmo commit.**
-- `vendor/` — bibliotecas de terceiros vendorizadas (Leaflet, fflate para zip/KMZ) — nunca CDN, o app precisa abrir offline em campo.
+- `vendor/` — bibliotecas de terceiros vendorizadas (Leaflet, fflate para zip/KMZ, qrcode para o painel de apoio) — nunca CDN, o app precisa abrir offline em campo.
+- `index.html` (raiz) — landing page institucional, fora de `src/html/` (§11.3). Reaproveita módulos do app por caminho relativo (`js/apoio_pix.js`, `js/feedback_whatsapp.js`, `js/consentimento_analytics.js`) em vez de duplicar lógica — não entra no precache do service worker (escopo dele é só `src/html/`).
 
 ## Convenções
 
