@@ -823,9 +823,14 @@ a.botao-secundario {
     margin-bottom: 6px;
 }
 
+.botao-andar-saf {
+    margin: 4px 0 12px;
+}
+
 .andar-fileira-nome {
     flex: 0 0 auto;
     min-width: 64px;
+    max-width: 35%;
     font-size: 0.8rem;
     font-weight: 600;
     color: var(--cor-texto-suave);

@@ -113,6 +113,9 @@ export class PainelProjeto extends HTMLElement {
                                 </label>
                             </div>
                             <p class="saf-resumo-total"></p>
+                            <button type="button" class="botao-primario botao-largo botao-andar-saf" data-acao="andar-saf" hidden>
+                                📍 Andar pela agrofloresta
+                            </button>
                             <ul class="lista-safs"></ul>
                         </section>
                     </div>
@@ -121,7 +124,6 @@ export class PainelProjeto extends HTMLElement {
                         <div class="secao-cabecalho">
                             <button type="button" data-acao="fechar-editor-saf" class="botao-icone" aria-label="Voltar">←</button>
                             <h2 class="editor-saf-titulo"></h2>
-                            <button type="button" class="botao-secundario" data-acao="andar-saf">📍 Andar</button>
                         </div>
                         <p class="editor-saf-info"></p>
                         <div class="matriz-saf-wrapper">
@@ -951,13 +953,50 @@ export class PainelProjeto extends HTMLElement {
         const botaoPlantar = painel.querySelector('[data-acao="andar-plantar"]');
         const candidatos = painel.querySelector(".andar-candidatos");
 
-        const todosOsQuadrados = () => (this._matrizEmEdicao?.linhasLogicas ?? []).flatMap((fileira, indiceFileira) =>
-            fileira.quadrados.map(q => ({
-                ...q,
-                chave: `${q.linhaId}|${q.indiceMetro}`,
-                indiceFileira,
-                nomeFileira: fileira.nomeExibicao
-            })));
+        const todosOsQuadrados = () => this._andar?.quadrados ?? [];
+
+        /**
+         * Lê do banco as linhas e plantas de TODOS os SAFs do projeto (o modo é
+         * do projeto, não de um SAF) e monta a lista plana de quadrados. Cada SAF
+         * tem a sua própria matriz (§14.5a), então a fileira é identificada por
+         * (SAF, fileira) e, havendo mais de um SAF, o nome dela leva o do SAF.
+         */
+        this._carregarDadosAndar = async ({ ajustarZoom = false } = {}) => {
+            const safsComLinhas = (await plantaTerraDB.listarTodasLinhasDoProjeto(this.projetoId))
+                .filter(({ linhas }) => linhas.length > 0);
+            const todasLinhas = safsComLinhas.flatMap(({ linhas }) => linhas);
+            const plantasPorLinha = await Promise.all(todasLinhas.map(l => plantaTerraDB.listarPlantasDaLinha(l.id)));
+
+            // O diálogo de planta lê estes dois mapas, que no editor de um SAF só têm as linhas dele.
+            this._linhasDoSafEmEdicaoPorId = new Map(todasLinhas.map(l => [l.id, l]));
+            this._plantasPorLinhaEmEdicao = new Map(todasLinhas.map((l, i) => [l.id, plantasPorLinha[i]]));
+
+            const variosSafs = safsComLinhas.length > 1;
+            let ordemFileira = 0;
+            const quadrados = [];
+            for (const { saf, linhas } of safsComLinhas) {
+                for (const fileira of calcularMatrizSaf(linhas).linhasLogicas) {
+                    const indiceFileira = ordemFileira++;
+                    const nomeFileira = variosSafs ? `${saf.nome} · ${fileira.nomeExibicao}` : fileira.nomeExibicao;
+                    for (const q of fileira.quadrados) {
+                        quadrados.push({ ...q, chave: `${q.linhaId}|${q.indiceMetro}`, indiceFileira, nomeFileira });
+                    }
+                }
+            }
+            if (this._andar) this._andar.quadrados = quadrados;
+
+            const partesParaMapa = todasLinhas.map(linha => {
+                const plantasPorMetro = agruparPlantasPorMetro(this._plantasPorLinhaEmEdicao.get(linha.id));
+                const { segmentos } = dividirEmMetros(linha.geometria);
+                const pontosPlantados = [...plantasPorMetro.entries()]
+                    .map(([indiceMetro, plantasDoMetro]) => ({ indiceMetro, coordenada: segmentos[indiceMetro]?.meio, plantas: plantasDoMetro }))
+                    .filter(ponto => ponto.coordenada);
+                return { linha, pontosPlantados };
+            });
+            // O mapa acompanha a pessoa: só enquadra tudo na entrada, antes do primeiro sinal de GPS.
+            this.mapaElemento.destacarLinhas(partesParaMapa, { ajustarZoom });
+            this._renderizarModoAndar?.();
+        };
 
         const pararGps = () => {
             if (this._andar?.watchId != null) {
@@ -1124,17 +1163,22 @@ export class PainelProjeto extends HTMLElement {
             this._abrirDialogoMetro(this._linhasDoSafEmEdicaoPorId.get(quadrado.linhaId), quadrado.indiceMetro, quadrado.coordenada);
         });
 
-        this.querySelector('[data-acao="andar-saf"]').addEventListener("click", () => {
+        this.querySelector('[data-acao="andar-saf"]').addEventListener("click", async () => {
+            this._andar = { watchId: null, seguindo: true, posicao: null, selecionada: null, quadrados: [] };
+            await this._carregarDadosAndar();
             if (todosOsQuadrados().length === 0) {
-                alert("Este SAF ainda não tem linhas com metros para escolher.");
+                this._andar = null;
+                this.mapaElemento.limparLinhasDestacadas();
+                alert("Ainda não há linhas de plantio com metros para escolher.");
                 return;
             }
-            this._andar = { watchId: null, seguindo: true, posicao: null, selecionada: null };
             // Mesmo padrão do editor de pontos: esconder de verdade o painel
             // inferior (não só visualmente) e deixar o mapa ocupar a tela.
             this.querySelector(".painel-inferior").hidden = true;
             painel.hidden = false;
             this.mapaElemento.invalidarTamanho();
+            // Só agora o mapa tem o tamanho final: enquadra tudo antes do primeiro sinal de GPS.
+            this.mapaElemento.ajustarZoomParaConteudo();
             status.textContent = "Toque em \"Iniciar GPS\" para ver os metros perto de você.";
             this._renderizarModoAndar();
         });
@@ -1143,10 +1187,11 @@ export class PainelProjeto extends HTMLElement {
             pararGps();
             this._andar = null;
             this.mapaElemento.limparModoAndar();
+            this.mapaElemento.limparLinhasDestacadas();
             painel.hidden = true;
             this.querySelector(".painel-inferior").hidden = false;
             this.mapaElemento.invalidarTamanho();
-            await this._recarregarEditorSaf();
+            await this.recarregarTudo();
         });
     }
 
@@ -1242,6 +1287,9 @@ export class PainelProjeto extends HTMLElement {
     _renderizarListaSafs() {
         const listaElemento = this.querySelector(".lista-safs");
         const resumoElemento = this.querySelector(".saf-resumo-total");
+
+        this.querySelector('[data-acao="andar-saf"]').hidden =
+            !this.safsComLinhas.some(({ linhas }) => linhas.length > 0);
 
         if (this.safsComLinhas.length === 0) {
             listaElemento.innerHTML = `<li class="lista-vazia">Nenhum SAF importado ainda.</li>`;
@@ -1358,7 +1406,7 @@ export class PainelProjeto extends HTMLElement {
             });
 
             formularioPlanta.reset();
-            await this._recarregarEditorSaf();
+            await this._recarregarAposMudarPlantas();
             this._abrirDialogoMetro(this._linhaAtualParaPlanta, this._metroEmEdicao);
         });
 
@@ -1378,7 +1426,6 @@ export class PainelProjeto extends HTMLElement {
             this._plantasPorLinhaEmEdicao = new Map(linhas.map((l, indice) => [l.id, plantasPorLinha[indice]]));
 
             const matriz = calcularMatrizSaf(linhas);
-            this._matrizEmEdicao = matriz;
             const totalPlantas = plantasPorLinha.reduce((soma, lista) => soma + lista.length, 0);
 
             tituloEditor.textContent = saf.nome;
@@ -1400,10 +1447,11 @@ export class PainelProjeto extends HTMLElement {
                     .filter(ponto => ponto.coordenada);
                 return { linha, pontosPlantados };
             });
-            // No modo "Andar" o mapa acompanha a pessoa: não pode voltar a enquadrar o SAF inteiro.
-            this.mapaElemento.destacarLinhas(partesParaMapa, { ajustarZoom: !this._andar });
-            this._renderizarModoAndar?.();
+            this.mapaElemento.destacarLinhas(partesParaMapa);
         };
+
+        // Plantas mudam tanto no editor de um SAF quanto no modo Andar (projeto todo): recarrega o que estiver aberto.
+        this._recarregarAposMudarPlantas = () => this._andar ? this._carregarDadosAndar() : this._recarregarEditorSaf();
 
         this._abrirDialogoMetro = (linha, indiceMetro, coordenada) => {
             this._linhaAtualParaPlanta = linha;
@@ -1417,7 +1465,10 @@ export class PainelProjeto extends HTMLElement {
                 .filter(p => p.indice_metro === indiceMetro);
 
             const rotuloLinha = linha.numero_linha !== null ? `Linha ${linha.numero_linha}` : linha.nome_original;
-            tituloPlanta.textContent = `${rotuloLinha} — metro ${indiceMetro}`;
+            // Com mais de um SAF no projeto, "Linha 1" sozinho é ambíguo (modo Andar mistura todos).
+            const safDaLinha = this.safsComLinhas.find(({ saf }) => saf.id === linha.saf_id)?.saf;
+            const prefixoSaf = this.safsComLinhas.length > 1 && safDaLinha ? `${safDaLinha.nome} · ` : "";
+            tituloPlanta.textContent = `${prefixoSaf}${rotuloLinha} — metro ${indiceMetro}`;
             listaPlantasMetro.innerHTML = plantasDoMetro.length === 0
                 ? `<li class="lista-vazia">Nenhuma planta cadastrada neste metro ainda.</li>`
                 : plantasDoMetro.map(planta => `
@@ -1436,7 +1487,7 @@ export class PainelProjeto extends HTMLElement {
                 botao.addEventListener("click", async () => {
                     const id = botao.closest(".item-planta").dataset.id;
                     await plantaTerraDB.removerPlanta(id);
-                    await this._recarregarEditorSaf();
+                    await this._recarregarAposMudarPlantas();
                     this._abrirDialogoMetro(linha, indiceMetro);
                 });
             });
