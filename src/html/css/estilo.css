@@ -871,16 +871,35 @@ a.botao-secundario {
     margin-top: 8px;
 }
 
-.rotulo-metro-proximo {
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    padding: 0;
-    font-weight: 700;
-    font-size: 0.7rem;
-    color: var(--cor-texto);
+/* Mapa (OpenLayers). Controles com alvo de toque de ~44px, como o resto do app. */
+mapa-projeto {
+    position: relative;
 }
 
-.rotulo-metro-proximo::before {
-    display: none;
+.ol-control button {
+    width: 44px;
+    height: 44px;
+    margin: 2px;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.ol-rotate {
+    top: 0.5em;
+    right: 0.5em;
+}
+
+.ol-attribution {
+    font-size: 0.7rem;
+}
+
+.tooltip-mapa {
+    background: rgba(26, 32, 44, 0.9);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    pointer-events: none;
 }

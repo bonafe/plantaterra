@@ -17,9 +17,9 @@ Todo o texto de interface e desta especificação é em **pt-BR**.
 | Decisão | Escolha |
 |---|---|
 | Framework / build | **Vanilla JS puro, sem bundler, sem framework.** ES Modules nativos do navegador (`<script type="module">`), servidos como arquivos estáticos. |
-| Bibliotecas de terceiros | **Vendorizadas** (baixadas e commitadas no repositório, ex. `vendor/leaflet/`), nunca via CDN — o app precisa abrir offline em campo. |
+| Bibliotecas de terceiros | **Vendorizadas** (baixadas e commitadas no repositório, ex. `vendor/openlayers/`), nunca via CDN — o app precisa abrir offline em campo. |
 | Persistência | **Local-first**, IndexedDB no navegador. Sem backend. Exportação/Importação de projeto em arquivo (GeoJSON/JSON) para backup e transferência entre aparelhos. |
-| Mapa base | **Leaflet** + tiles OpenStreetMap, com cache de tiles já visitados (para reabrir o mapa offline na mesma área). |
+| Mapa base | **OpenLayers** (global `ol`, `vendor/openlayers/`) + tiles OpenStreetMap, com cache de tiles já visitados (para reabrir o mapa offline na mesma área). O mapa **gira** com dois dedos e tem botão de bússola para voltar ao norte; rótulos de texto desenhados por nós não giram junto (ficam legíveis), mas os nomes impressos nos tiles raster do OSM giram. Trocou do Leaflet porque ele não suporta rotação. |
 | Leitura do laser | **Manual** (a pessoa lê a régua/mira e digita a altura). Leitura automática por câmera é trabalho futuro (ver §10). |
 | Instalação | PWA instalável (manifest + service worker), para abrir em tela cheia e funcionar sem sinal de internet no terreno. |
 
@@ -88,7 +88,7 @@ Diferente da captura de um ponto único, aqui o GPS fica ligado continuamente en
    - **Medóide em janela deslizante**: as amostras aceitas por precisão entram numa janela das últimas N amostras (padrão 3, configurável). A cada nova amostra, com a janela cheia, calcula-se o **medóide** — a amostra da janela cuja soma de distâncias até as outras é a menor — e esse é o ponto candidato. Um salto isolado fica longe das demais amostras da janela e nunca vence essa comparação; um deslocamento real (mesmo acelerando, a pé ou de carro) só precisa que a maioria das amostras recentes concorde entre si, sem depender de um limiar fixo de velocidade.
    - O candidato resultante só vira ponto confirmado da trilha se estiver a mais de uma distância mínima do último ponto confirmado (padrão 3 m, configurável) — a mesma decimação de sempre, agora alimentada pelo candidato filtrado em vez da amostra bruta.
    - Efeito colateral aceito: um pequeno atraso (poucos segundos, até a janela encher) entre o início da caminhada e o primeiro ponto confirmado, e entre cada amostra bruta e sua confirmação.
-3. Mapa mostra a trilha sendo desenhada em tempo real (polyline no Leaflet), com a posição atual do usuário destacada (o marcador de posição atual usa a amostra bruta, já filtrada por precisão, sem esperar a janela — só a trilha registrada passa pelo filtro de medóide).
+3. Mapa mostra a trilha sendo desenhada em tempo real (linha vetorial no mapa), com a posição atual do usuário destacada (o marcador de posição atual usa a amostra bruta, já filtrada por precisão, sem esperar a janela — só a trilha registrada passa pelo filtro de medóide).
 4. Usuário pode pausar/retomar (ex. parar para almoçar) e apagar o último ponto se caminhar por engano.
 5. Ao apertar "Concluir perímetro": a trilha bruta passa por **simplificação (algoritmo de Douglas-Peucker)** para remover ruído mantendo a forma, e é fechada (conectando o último ponto ao primeiro) para virar um polígono — a menos que o projeto esteja marcado como "terreno convexo" (ver abaixo), caso em que o polígono é calculado por casco convexo.
 6. O polígono resultante fica associado ao projeto e é exibido permanentemente sobre o mapa. Pode ser refeito a qualquer momento (gera uma nova trilha, substituindo ou salvando como versão). O histórico de rodadas (tela "Histórico de rodadas") lista todas as capturas já feitas, cada uma com nome editável (clique no lápis ✏️) e um checkbox "Visível no mapa" independente — **várias rodadas podem estar visíveis ao mesmo tempo**, cada uma desenhada com uma cor e rótulo diferentes (útil para áreas internas à propriedade, como uma horta, vistas junto com o perímetro total). A partir daí também dá para trocar qual rodada é a "principal" (usada no resumo de área do topo e na exportação completa do projeto, §8), editar os pontos brutos de qualquer rodada, excluí-la, ou **exportar o polígono daquela rodada isoladamente em KML** (`js/db/exportador_geoespacial.js#exportarKMLTrilha`).
@@ -111,11 +111,11 @@ Pipeline:
 1. **Projeção local**: converter lat/lon para um plano cartesiano local em metros (projeção equirretangular simples centrada no centróide dos pontos — precisão suficiente na escala de uma propriedade, evita a complexidade de UTM completo).
 2. **Interpolação em grade regular**: usar **IDW (Inverse Distance Weighting)** sobre uma grade regular (resolução configurável, padrão ~1/50 da menor dimensão do terreno) para estimar a altitude em cada célula a partir dos pontos medidos vizinhos. Escolhido em vez de triangulação/krigagem por ser simples de implementar sem bibliotecas externas e robusto com poucos pontos esparsos (situação comum em campo).
 3. **Extração de isolinhas**: algoritmo de **Marching Squares** sobre a grade interpolada, com um espaçamento de curva configurável (padrão sugerido automaticamente a partir do desnível total medido, ex. desnível/10).
-4. **Reprojeção** das isolinhas de volta para lat/lon e desenho no Leaflet como polylines, uma cor por faixa de altitude (rótulo com o valor da curva).
+4. **Reprojeção** das isolinhas de volta para lat/lon e desenho no mapa como linhas, uma cor por faixa de altitude (rótulo com o valor da curva).
 5. Fora do polígono do perímetro (quando existir), as curvas são recortadas/ocultadas — não extrapolar visualmente para fora da propriedade.
 6. Pontos de leitura brutos ficam disponíveis como uma camada que pode ser ligada/desligada (para conferência), assim como o rótulo de qual `EstacaoNivel` cada leitura pertence.
 
-Todos os algoritmos acima (Douglas-Peucker, IDW, Marching Squares, shoelace) são implementados diretamente no projeto (arquivo `src/geo/`), sem dependências externas, já que optamos por vendorizar só o Leaflet.
+Todos os algoritmos acima (Douglas-Peucker, IDW, Marching Squares, shoelace) são implementados diretamente no projeto (arquivo `src/geo/`), sem dependências externas, já que optamos por vendorizar só a biblioteca de mapa (OpenLayers).
 
 ## 8. Modelo de dados (IndexedDB)
 
@@ -205,7 +205,7 @@ Além dele, o projeto pode ser exportado em **GeoJSON** e **KML/KMZ** para uso e
 ## 9. Estrutura de telas
 
 1. **Lista de projetos** (tela inicial): criar novo projeto, abrir existente, importar de arquivo, abrir a **Biblioteca de plantas** (§15.1, rota `#/biblioteca`).
-2. **Painel do projeto**: mapa Leaflet ocupando a maior parte da tela, com abas/botões flutuantes para alternar camadas (perímetro, estações+leituras, curvas de nível) e menu de ações:
+2. **Painel do projeto**: mapa (OpenLayers) ocupando a maior parte da tela, com abas/botões flutuantes para alternar camadas (perímetro, estações+leituras, curvas de nível) e menu de ações:
    - "Mapear perímetro" → tela de captura de trilha (§6).
    - "Nova estação de nível" → formulário: capturar coordenada (§5) + altura do instrumento.
    - Dentro de uma estação ativa: "Nova leitura" → captura coordenada (§5) + altura da mira + checkbox "é ponto de amarração".
@@ -215,7 +215,7 @@ Além dele, o projeto pode ser exportado em **GeoJSON** e **KML/KMZ** para uso e
 
 ## 10. Requisitos não funcionais
 
-- **Offline-first**: service worker cacheia o app shell, o Leaflet vendorizado e os tiles de mapa já visitados. IndexedDB garante que os dados de campo nunca dependem de conexão.
+- **Offline-first**: service worker cacheia o app shell, o OpenLayers vendorizado e os tiles de mapa já visitados. IndexedDB garante que os dados de campo nunca dependem de conexão.
 - **Mobile-first / responsivo**: uso previsto é no navegador do celular, em campo, muitas vezes sob sol forte — botões grandes, alto contraste, mínimo de texto pequeno.
 - **Privacidade**: nenhum dado sai do dispositivo a menos que o usuário exporte manualmente.
 - **Resiliência a interrupção**: qualquer leitura em andamento pode ser retomada se o navegador for fechado/recarregado no meio (estado salvo incrementalmente, não só ao final).
@@ -232,7 +232,7 @@ Inspirado no mesmo mecanismo já usado no projeto irmão (Nosso Treino): dois li
 Link pro roteador interno (`#/apoiar`, `js/componentes/tela_apoiar.js`), sempre visível no rodapé (`js/main.js`). Mesma filosofia do Nosso Treino: o código só **exibe** strings "Pix copia e cola" já prontas, geradas no app do banco/PSP — nunca constrói ou calcula o payload (um payload Pix errado falha na validação de quem for pagar, não é algo pra reinventar).
 
 - `js/dados_apoio.js` (`OPCOES_PIX`): lista de `{ valor, payload }` — um valor sugerido por opção, mais uma de valor livre (`valor: null`). `payload: null` esconde a opção até existir a string real. **Hoje todos os `payload` são `null` (placeholder, TODO)** — preencher com as strings reais antes de divulgar o link.
-- QR Code gerado no navegador a partir do payload selecionado, biblioteca vendorizada (`vendor/qrcode/qrcode.min.js`, `davidshimjs/qrcodejs`, MIT — mesmo padrão de `vendor/leaflet/`, nunca CDN).
+- QR Code gerado no navegador a partir do payload selecionado, biblioteca vendorizada (`vendor/qrcode/qrcode.min.js`, `davidshimjs/qrcodejs`, MIT — mesmo padrão de `vendor/openlayers/`, nunca CDN).
 - Botão de copiar (`navigator.clipboard.writeText`, com fallback pra um `<input readonly>` selecionável se a Clipboard API não estiver disponível — nunca falha silenciosamente).
 - Sem nenhuma opção com `payload` preenchido, mostra "Chave Pix ainda sendo configurada" em vez de uma tela quebrada.
 
@@ -277,7 +277,7 @@ Hoje, para saber o que está plantado em cada linha, o usuário usa um único PI
 1. **Importar** esse KMZ, reconhecendo esse padrão de pastas/linhas.
 2. Permitir **dividir cada linha em segmentos de 1 metro** e registrar quais plantas existem em cada segmento.
 3. **Exportar de volta** para KML/KMZ, agora com um marcador por metro plantado (mostrando as plantas ali) além da linha inteira — substituindo o PIN único genérico.
-4. Fazer isso **usando o mesmo modelo geoespacial** do restante do app (mesmo `Projeto`, mesmo mapa Leaflet, mesmo exportador KML/GeoJSON), já que perímetro, curva de nível e linhas de plantio descrevem a mesma propriedade.
+4. Fazer isso **usando o mesmo modelo geoespacial** do restante do app (mesmo `Projeto`, mesmo mapa, mesmo exportador KML/GeoJSON), já que perímetro, curva de nível e linhas de plantio descrevem a mesma propriedade.
 
 ### 14.2 Conceitos de domínio
 
@@ -472,7 +472,7 @@ src/html/                     # aplicação (código antigo do protótipo foi re
     kml/                      # leitura/escrita de KML/KMZ (§14.3, §14.4)
     db/                       # camada IndexedDB + exportadores (backup, GeoJSON/KML/KMZ)
   vendor/
-    leaflet/
+    openlayers/               # ol.js + ol.css (mapa, com rotação)
     fflate/                   # zip/unzip para KMZ
     qrcode/                   # QR Code do painel de apoio (§11.1)
 docs/
@@ -485,7 +485,7 @@ docs/
 2. Camada de dados (IndexedDB) + CRUD de projetos.
 3. Captura de coordenada estabilizada (§5) como componente isolado e testável.
 4. Fluxo de estação de nível + leituras + cálculo de altitude relativa (§4), sem mapa ainda (lista/tabela).
-5. Integração do Leaflet (vendorizado) + exibição de pontos no mapa.
+5. Integração do mapa (OpenLayers, vendorizado; antes Leaflet) + exibição de pontos no mapa.
 6. Captura de trilha de perímetro (§6) + desenho do polígono.
 7. Pipeline de curvas de nível (§7): projeção, IDW, marching squares, desenho no mapa.
 8. Exportação/Importação de projeto (backup JSON).

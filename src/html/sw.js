@@ -1,6 +1,6 @@
 // Mantenha sincronizado com VERSAO_APP em js/versao.js (rodapé do app) —
 // bump os dois juntos a cada release, ver docs/especificacao.md secao 10.
-const VERSAO_APP = "19";
+const VERSAO_APP = "20";
 const VERSAO_CACHE = `plantaterra-v${VERSAO_APP}`;
 const CACHE_TILES = "plantaterra-tiles-v1";
 
@@ -47,13 +47,8 @@ const ARQUIVOS_DO_APP = [
     "./js/kml/importador_saf.js",
     "./icons/icone-192.png",
     "./icons/icone-512.png",
-    "./vendor/leaflet/leaflet.css",
-    "./vendor/leaflet/leaflet.js",
-    "./vendor/leaflet/images/layers.png",
-    "./vendor/leaflet/images/layers-2x.png",
-    "./vendor/leaflet/images/marker-icon.png",
-    "./vendor/leaflet/images/marker-icon-2x.png",
-    "./vendor/leaflet/images/marker-shadow.png",
+    "./vendor/openlayers/ol.css",
+    "./vendor/openlayers/ol.js",
     "./vendor/fflate/fflate.js",
     "./vendor/qrcode/qrcode.min.js"
 ];

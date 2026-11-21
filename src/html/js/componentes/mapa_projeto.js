@@ -1,7 +1,13 @@
 /**
- * <mapa-projeto>: encapsula o mapa Leaflet e todas as camadas visuais do
+ * <mapa-projeto>: encapsula o mapa OpenLayers e todas as camadas visuais do
  * projeto (perímetro, estações/leituras, curvas de nível, trilha em progresso).
- * Espera que `window.L` (Leaflet) já esteja carregado via <script> global.
+ * Espera que `window.ol` (OpenLayers, vendor/openlayers/ol.js) já esteja
+ * carregado via <script> global.
+ *
+ * O resto do app só conversa com os métodos públicos desta classe (em lat/lon);
+ * projeções, estilos e features do OpenLayers ficam todos aqui dentro.
+ * O mapa gira (dois dedos, ou arrastando com Alt+Shift); o botão de bússola
+ * volta ao norte.
  */
 
 const CORES_ISOLINHA = ["#2b6cb0", "#2f855a", "#b7791f", "#c05621", "#9b2c2c", "#553c9a"];
@@ -11,9 +17,56 @@ const CORES_ISOLINHA = ["#2b6cb0", "#2f855a", "#b7791f", "#c05621", "#9b2c2c", "
 const COR_GRADIENTE_INICIO = [49, 130, 206]; // #3182ce
 const COR_GRADIENTE_FIM = [229, 62, 62]; // #e53e3e
 
+// Folga, em px, para acertar o toque num ponto pequeno com o dedo.
+const TOLERANCIA_TOQUE_PX = 8;
+
 function corGradiente(fracao) {
     const [r, g, b] = COR_GRADIENTE_INICIO.map((c, i) => Math.round(c + (COR_GRADIENTE_FIM[i] - c) * fracao));
     return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** "#rrggbb" + opacidade -> "rgba(...)". Aceita também "rgb(...)" já pronto (ignora a opacidade). */
+function comOpacidade(cor, opacidade = 1) {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(cor);
+    if (!m) return cor;
+    return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${opacidade})`;
+}
+
+/** lat/lon (graus) -> coordenada do mapa (Web Mercator). */
+function paraMapa(lat, lon) {
+    return ol.proj.fromLonLat([lon, lat]);
+}
+
+function estiloLinha({ cor, largura = 2, opacidade = 1, tracejado = null }) {
+    return new ol.style.Style({
+        stroke: new ol.style.Stroke({ color: comOpacidade(cor, opacidade), width: largura, lineDash: tracejado })
+    });
+}
+
+function estiloPoligono({ cor, largura = 2, opacidade = 1, opacidadePreenchimento = 0.08, tracejado = null }) {
+    return new ol.style.Style({
+        stroke: new ol.style.Stroke({ color: comOpacidade(cor, opacidade), width: largura, lineDash: tracejado }),
+        fill: new ol.style.Fill({ color: comOpacidade(cor, opacidadePreenchimento) })
+    });
+}
+
+/** Equivalente ao "circleMarker" de antes: círculo com raio em pixels (não em metros). */
+function estiloCirculo({ raio, cor, largura = 2, corPreenchimento, opacidadePreenchimento = 1, texto = null }) {
+    return new ol.style.Style({
+        image: new ol.style.Circle({
+            radius: raio,
+            stroke: new ol.style.Stroke({ color: cor, width: largura }),
+            fill: new ol.style.Fill({ color: comOpacidade(corPreenchimento, opacidadePreenchimento) })
+        }),
+        // O texto não gira com o mapa (rotateWithView é falso por padrão): continua legível.
+        text: texto ? new ol.style.Text({
+            text: texto,
+            offsetY: -(raio + 10),
+            font: "bold 13px system-ui, sans-serif",
+            fill: new ol.style.Fill({ color: "#1a202c" }),
+            stroke: new ol.style.Stroke({ color: "#fff", width: 3 })
+        }) : undefined
+    });
 }
 
 export class MapaProjeto extends HTMLElement {
@@ -23,29 +76,148 @@ export class MapaProjeto extends HTMLElement {
         this._inicializado = true;
 
         this.style.display = "block";
-        this.mapa = L.map(this, { zoomControl: true, maxZoom: 22 }).setView([-23.0, -47.2], 15);
 
-        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        // Uma camada vetorial por tipo de conteúdo; a ordem de criação é a ordem
+        // de empilhamento (a última fica por cima), como era com os layerGroup.
+        this._zIndex = 1;
+        this.camadaContexto = this._criarCamada();
+        this.camadaPerimetro = this._criarCamada();
+        this.camadaLeituras = this._criarCamada();
+        this.camadaIsolinhas = this._criarCamada();
+        this.camadaLinhasSaf = this._criarCamada();
+        this.camadaLinhaDestacada = this._criarCamada();
+        this.camadaSegmentoAtivo = this._criarCamada();
+        this.camadaMetrosProximos = this._criarCamada();
+        this.camadaPosicaoUsuario = this._criarCamada();
+        this.camadaTrilhaEmProgresso = this._criarCamada();
+        this.camadaPontosTrilha = this._criarCamada();
+        this.camadaPreviaPoligono = this._criarCamada();
+
+        // crossOrigin: null mantém as requisições de tile no modo "no-cors" de
+        // sempre (o service worker guarda essas respostas no cache de tiles —
+        // sw.js). Com "anonymous" o cache já existente nos aparelhos deixaria
+        // de servir. Não lemos pixels do canvas, então não precisamos de CORS.
+        const fundo = new ol.layer.Tile({
+            zIndex: 0,
+            source: new ol.source.OSM({
+                crossOrigin: null,
+                attributions: ['&copy; colaboradores do <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>']
+            })
+        });
+
+        this.visao = new ol.View({
+            center: paraMapa(-23.0, -47.2),
+            zoom: 15,
+            // O servidor de tiles do OSM vai até o nível 19; acima disso o
+            // OpenLayers só amplia a imagem, o que dá zoom suficiente para
+            // escolher quadrados de 1 m no modo Andar.
             maxZoom: 22,
-            maxNativeZoom: 19,
-            attribution: "&copy; colaboradores do OpenStreetMap"
-        }).addTo(this.mapa);
+            enableRotation: true
+        });
 
-        this.camadaContexto = L.layerGroup().addTo(this.mapa);
-        this.camadaPerimetro = L.layerGroup().addTo(this.mapa);
-        this.camadaLeituras = L.layerGroup().addTo(this.mapa);
-        this.camadaIsolinhas = L.layerGroup().addTo(this.mapa);
-        this.camadaLinhasSaf = L.layerGroup().addTo(this.mapa);
-        this.camadaLinhaDestacada = L.layerGroup().addTo(this.mapa);
-        this.camadaSegmentoAtivo = L.layerGroup().addTo(this.mapa);
-        this.camadaMetrosProximos = L.layerGroup().addTo(this.mapa);
-        this.camadaPosicaoUsuario = L.layerGroup().addTo(this.mapa);
-        this.camadaTrilhaEmProgresso = L.layerGroup().addTo(this.mapa);
-        this.camadaPontosTrilha = L.layerGroup().addTo(this.mapa);
-        this.camadaPreviaPoligono = L.layerGroup().addTo(this.mapa);
+        this.mapa = new ol.Map({
+            target: this,
+            layers: [fundo, ...this._camadas.map(c => c.camada)],
+            view: this.visao,
+            controls: ol.control.defaults.defaults({
+                zoom: true,
+                // Bússola: só aparece quando o mapa está girado; tocar volta ao norte.
+                rotate: true,
+                attribution: true
+            })
+        });
+
+        this._montarTooltip();
 
         this._centralizadoAutomaticamente = false;
         this.centralizarNaPosicaoAtual();
+    }
+
+    _criarCamada() {
+        const fonte = new ol.source.Vector();
+        const camada = new ol.layer.Vector({
+            source: fonte,
+            zIndex: this._zIndex++,
+            // Sem isto as camadas vetoriais somem durante gestos/animações (giro, seguir a posição).
+            updateWhileAnimating: true,
+            updateWhileInteracting: true
+        });
+        (this._camadas ??= []).push({ camada, fonte });
+        return fonte;
+    }
+
+    /**
+     * Rótulo flutuante ao passar o mouse ou tocar numa feature que tem a
+     * propriedade `rotulo`; e clique/toque em features com `aoClicar`.
+     */
+    _montarTooltip() {
+        const elemento = document.createElement("div");
+        elemento.className = "tooltip-mapa";
+        elemento.hidden = true;
+        this._overlayTooltip = new ol.Overlay({
+            element: elemento,
+            offset: [0, -14],
+            positioning: "bottom-center",
+            stopEvent: false
+        });
+        this.mapa.addOverlay(this._overlayTooltip);
+        this._elementoTooltip = elemento;
+
+        const featureNoPixel = pixel => {
+            let alvo = null;
+            this.mapa.forEachFeatureAtPixel(pixel, feature => {
+                if (feature.get("aoClicar") || feature.get("rotulo")) {
+                    alvo = feature;
+                    return true;
+                }
+                return false;
+            }, { hitTolerance: TOLERANCIA_TOQUE_PX });
+            return alvo;
+        };
+
+        const mostrar = (feature, coordenada) => {
+            const rotulo = feature?.get("rotulo");
+            if (!rotulo) {
+                elemento.hidden = true;
+                return;
+            }
+            elemento.textContent = rotulo;
+            elemento.hidden = false;
+            this._overlayTooltip.setPosition(coordenada);
+        };
+
+        this.mapa.on("click", evento => {
+            const feature = featureNoPixel(evento.pixel);
+            feature?.get("aoClicar")?.();
+            mostrar(feature, evento.coordinate);
+        });
+
+        // Mouse: o rótulo aparece ao passar por cima. No toque não há "passar por
+        // cima" — lá vale o rótulo do toque (evento "click" acima).
+        this.mapa.on("pointermove", evento => {
+            if (evento.dragging || evento.originalEvent.pointerType !== "mouse") return;
+            const feature = featureNoPixel(evento.pixel);
+            this.mapa.getTargetElement().style.cursor = feature?.get("aoClicar") ? "pointer" : "";
+            mostrar(feature, evento.coordinate);
+        });
+    }
+
+    _adicionar(fonte, geometria, estilo, propriedades = {}) {
+        const feature = new ol.Feature({ geometry: geometria, ...propriedades });
+        feature.setStyle(estilo);
+        fonte.addFeature(feature);
+        return feature;
+    }
+
+    /** Linha (ou anel de polígono) a partir de uma lista de {lat, lon}. */
+    _coordenadas(pontos) {
+        return pontos.map(p => paraMapa(p.lat, p.lon));
+    }
+
+    _anel(pontos) {
+        const coordenadas = this._coordenadas(pontos);
+        coordenadas.push(coordenadas[0]);
+        return coordenadas;
     }
 
     centralizarNaPosicaoAtual() {
@@ -53,7 +225,8 @@ export class MapaProjeto extends HTMLElement {
         navigator.geolocation.getCurrentPosition(
             posicao => {
                 if (!this._centralizadoAutomaticamente) {
-                    this.mapa.setView([posicao.coords.latitude, posicao.coords.longitude], 17);
+                    this.visao.setCenter(paraMapa(posicao.coords.latitude, posicao.coords.longitude));
+                    this.visao.setZoom(17);
                     this._centralizadoAutomaticamente = true;
                 }
             },
@@ -68,29 +241,22 @@ export class MapaProjeto extends HTMLElement {
      * só para ajudar a situar a propriedade — não são interativos.
      */
     definirElementosContexto(elementos) {
-        this.camadaContexto.clearLayers();
+        this.camadaContexto.clear();
 
         for (const elemento of elementos) {
-            const latLngs = elemento.geometria.map(p => [p.lat, p.lon]);
+            const propriedades = { rotulo: elemento.nome };
 
             if (elemento.tipo === "Point") {
-                L.circleMarker(latLngs[0], {
-                    radius: 4,
-                    color: "#718096",
-                    weight: 1,
-                    fillColor: "#a0aec0",
-                    fillOpacity: 0.8
-                })
-                    .bindTooltip(elemento.nome)
-                    .addTo(this.camadaContexto);
+                const p = elemento.geometria[0];
+                this._adicionar(this.camadaContexto, new ol.geom.Point(paraMapa(p.lat, p.lon)),
+                    estiloCirculo({ raio: 4, cor: "#718096", largura: 1, corPreenchimento: "#a0aec0", opacidadePreenchimento: 0.8 }),
+                    propriedades);
             } else if (elemento.tipo === "LineString") {
-                L.polyline(latLngs, { color: "#718096", weight: 2, opacity: 0.7, dashArray: "4 4" })
-                    .bindTooltip(elemento.nome)
-                    .addTo(this.camadaContexto);
+                this._adicionar(this.camadaContexto, new ol.geom.LineString(this._coordenadas(elemento.geometria)),
+                    estiloLinha({ cor: "#718096", largura: 2, opacidade: 0.7, tracejado: [4, 4] }), propriedades);
             } else if (elemento.tipo === "Polygon") {
-                L.polygon(latLngs, { color: "#718096", weight: 2, opacity: 0.7, fillOpacity: 0.08 })
-                    .bindTooltip(elemento.nome)
-                    .addTo(this.camadaContexto);
+                this._adicionar(this.camadaContexto, new ol.geom.Polygon([this._anel(elemento.geometria)]),
+                    estiloPoligono({ cor: "#718096", largura: 2, opacidade: 0.7, opacidadePreenchimento: 0.08 }), propriedades);
             }
         }
     }
@@ -103,79 +269,66 @@ export class MapaProjeto extends HTMLElement {
      * (nome da rodada) por polígono, no mesmo padrão de definirLinhasSaf.
      */
     definirPerimetros(trilhas) {
-        this.camadaPerimetro.clearLayers();
+        this.camadaPerimetro.clear();
 
         trilhas.forEach((trilha, indice) => {
             if (!trilha.poligono || trilha.poligono.length < 3) return;
 
-            const latLngs = trilha.poligono.map(p => [p.lat, p.lon]);
             const cor = trilha.ativo ? "#805ad5" : CORES_ISOLINHA[indice % CORES_ISOLINHA.length];
-            const nome = trilha.nome || "Perímetro";
-
-            L.polygon(latLngs, { color: cor, weight: trilha.ativo ? 3 : 2, fillOpacity: 0.08 })
-                .bindTooltip(nome)
-                .addTo(this.camadaPerimetro);
+            this._adicionar(this.camadaPerimetro, new ol.geom.Polygon([this._anel(trilha.poligono)]),
+                estiloPoligono({ cor, largura: trilha.ativo ? 3 : 2, opacidadePreenchimento: 0.08 }),
+                { rotulo: trilha.nome || "Perímetro" });
         });
     }
 
     definirEstacoesELeituras(estacoesComLeituras) {
-        this.camadaLeituras.clearLayers();
+        this.camadaLeituras.clear();
 
         estacoesComLeituras.forEach(({ estacao, leituras }, indiceEstacao) => {
             const cor = CORES_ISOLINHA[indiceEstacao % CORES_ISOLINHA.length];
 
-            L.circleMarker([estacao.coordenada.lat, estacao.coordenada.lon], {
-                radius: 9,
-                color: cor,
-                weight: 3,
-                fillColor: "#fff",
-                fillOpacity: 1
-            })
-                .bindTooltip(`${estacao.nome} (instrumento)`)
-                .addTo(this.camadaLeituras);
+            this._adicionar(this.camadaLeituras,
+                new ol.geom.Point(paraMapa(estacao.coordenada.lat, estacao.coordenada.lon)),
+                estiloCirculo({ raio: 9, cor, largura: 3, corPreenchimento: "#ffffff" }),
+                { rotulo: `${estacao.nome} (instrumento)` });
 
             leituras.forEach(leitura => {
                 const rotulo = leitura.altitude_relativa !== null
                     ? `${leitura.altitude_relativa.toFixed(2)} m`
                     : "sem altitude";
 
-                L.circleMarker([leitura.coordenada.lat, leitura.coordenada.lon], {
-                    radius: 5,
-                    color: cor,
-                    weight: 2,
-                    fillColor: cor,
-                    fillOpacity: leitura.eh_ponto_amarracao ? 1 : 0.6
-                })
-                    .bindTooltip(`${estacao.nome}: ${rotulo}${leitura.eh_ponto_amarracao ? " (amarração)" : ""}`)
-                    .addTo(this.camadaLeituras);
+                this._adicionar(this.camadaLeituras,
+                    new ol.geom.Point(paraMapa(leitura.coordenada.lat, leitura.coordenada.lon)),
+                    estiloCirculo({
+                        raio: 5, cor, largura: 2, corPreenchimento: cor,
+                        opacidadePreenchimento: leitura.eh_ponto_amarracao ? 1 : 0.6
+                    }),
+                    { rotulo: `${estacao.nome}: ${rotulo}${leitura.eh_ponto_amarracao ? " (amarração)" : ""}` });
             });
         });
     }
 
     definirIsolinhas(isolinhas) {
-        this.camadaIsolinhas.clearLayers();
+        this.camadaIsolinhas.clear();
 
         isolinhas.forEach(({ nivel, pontos }, indice) => {
-            const cor = CORES_ISOLINHA[indice % CORES_ISOLINHA.length];
+            const estilo = estiloLinha({ cor: CORES_ISOLINHA[indice % CORES_ISOLINHA.length], largura: 2 });
             pontos.forEach(([p1, p2]) => {
-                L.polyline([[p1.lat, p1.lon], [p2.lat, p2.lon]], { color: cor, weight: 2 })
-                    .bindTooltip(`${nivel.toFixed(2)} m`)
-                    .addTo(this.camadaIsolinhas);
+                this._adicionar(this.camadaIsolinhas, new ol.geom.LineString(this._coordenadas([p1, p2])),
+                    estilo, { rotulo: `${nivel.toFixed(2)} m` });
             });
         });
     }
 
     definirLinhasSaf(safsComLinhas) {
-        this.camadaLinhasSaf.clearLayers();
+        this.camadaLinhasSaf.clear();
 
         safsComLinhas.forEach(({ saf, linhas }, indiceSaf) => {
-            const cor = CORES_ISOLINHA[indiceSaf % CORES_ISOLINHA.length];
+            const estilo = estiloLinha({ cor: CORES_ISOLINHA[indiceSaf % CORES_ISOLINHA.length], largura: 3, opacidade: 0.7 });
 
             linhas.forEach(linha => {
-                const latLngs = linha.geometria.map(p => [p.lat, p.lon]);
-                L.polyline(latLngs, { color: cor, weight: 3, opacity: 0.7 })
-                    .bindTooltip(`${saf.nome}: ${linha.nome_original}`)
-                    .addTo(this.camadaLinhasSaf);
+                this._adicionar(this.camadaLinhasSaf, new ol.geom.LineString(this._coordenadas(linha.geometria)),
+                    estilo, { rotulo: `${saf.nome}: ${linha.nome_original}` });
             });
         });
     }
@@ -186,41 +339,34 @@ export class MapaProjeto extends HTMLElement {
      * planta cadastrada.
      */
     destacarLinhas(partes, { ajustarZoom = true } = {}) {
-        this.camadaLinhaDestacada.clearLayers();
+        this.camadaLinhaDestacada.clear();
 
-        const todosOsPontos = [];
+        const todasAsCoordenadas = [];
+        const estiloDaLinha = estiloLinha({ cor: "#e53e3e", largura: 5 });
+        const estiloPlantado = estiloCirculo({ raio: 6, cor: "#e53e3e", largura: 2, corPreenchimento: "#ffffff" });
 
         partes.forEach(({ linha, pontosPlantados }) => {
-            const latLngs = linha.geometria.map(p => [p.lat, p.lon]);
-            todosOsPontos.push(...latLngs);
+            const coordenadas = this._coordenadas(linha.geometria);
+            todasAsCoordenadas.push(...coordenadas);
 
             const rotuloLinha = linha.numero_linha !== null ? `Linha ${linha.numero_linha}` : linha.nome_original;
-            L.polyline(latLngs, { color: "#e53e3e", weight: 5 })
-                .bindTooltip(rotuloLinha)
-                .addTo(this.camadaLinhaDestacada);
+            this._adicionar(this.camadaLinhaDestacada, new ol.geom.LineString(coordenadas), estiloDaLinha, { rotulo: rotuloLinha });
 
             pontosPlantados.forEach(({ indiceMetro, coordenada, plantas }) => {
-                L.circleMarker([coordenada.lat, coordenada.lon], {
-                    radius: 6,
-                    color: "#e53e3e",
-                    fillColor: "#fff",
-                    weight: 2,
-                    fillOpacity: 1
-                })
-                    .bindTooltip(`${rotuloLinha} · metro ${indiceMetro}: ${plantas.map(p => p.especie).join(", ")}`)
-                    .addTo(this.camadaLinhaDestacada);
+                this._adicionar(this.camadaLinhaDestacada,
+                    new ol.geom.Point(paraMapa(coordenada.lat, coordenada.lon)), estiloPlantado,
+                    { rotulo: `${rotuloLinha} · metro ${indiceMetro}: ${plantas.map(p => p.especie).join(", ")}` });
             });
         });
 
-        const bounds = L.latLngBounds(todosOsPontos);
-        if (ajustarZoom && bounds.isValid()) {
-            this.mapa.fitBounds(bounds, { padding: [40, 40] });
+        if (ajustarZoom && todasAsCoordenadas.length) {
+            this._enquadrar(ol.extent.boundingExtent(todasAsCoordenadas), 40);
         }
     }
 
     limparLinhasDestacadas() {
-        this.camadaLinhaDestacada.clearLayers();
-        this.camadaSegmentoAtivo.clearLayers();
+        this.camadaLinhaDestacada.clear();
+        this.camadaSegmentoAtivo.clear();
     }
 
     /**
@@ -229,101 +375,101 @@ export class MapaProjeto extends HTMLElement {
      * mudar o zoom, para manter a noção de onde ele fica dentro da linha.
      */
     destacarSegmentoAtivo(coordenada) {
-        this.camadaSegmentoAtivo.clearLayers();
+        this.camadaSegmentoAtivo.clear();
 
-        L.circleMarker([coordenada.lat, coordenada.lon], {
-            radius: 11,
-            color: "#f6e05e",
-            weight: 3,
-            fillColor: "#f6e05e",
-            fillOpacity: 0.5
-        }).addTo(this.camadaSegmentoAtivo);
+        const centro = paraMapa(coordenada.lat, coordenada.lon);
+        this._adicionar(this.camadaSegmentoAtivo, new ol.geom.Point(centro),
+            estiloCirculo({ raio: 11, cor: "#f6e05e", largura: 3, corPreenchimento: "#f6e05e", opacidadePreenchimento: 0.5 }));
 
-        this.mapa.panTo([coordenada.lat, coordenada.lon]);
+        this.visao.animate({ center: centro, duration: 200 });
     }
 
     // ---- Modo "Andar na agrofloresta" (docs/especificacao.md secao 14.9) ----
 
     /** Ponto azul na posição do GPS, com um círculo do tamanho da precisão informada. */
     definirPosicaoUsuario({ lat, lon, precisao }) {
-        this.camadaPosicaoUsuario.clearLayers();
+        this.camadaPosicaoUsuario.clear();
         if (Number.isFinite(precisao)) {
-            L.circle([lat, lon], { radius: precisao, color: "#3182ce", weight: 1, fillColor: "#3182ce", fillOpacity: 0.12, interactive: false })
-                .addTo(this.camadaPosicaoUsuario);
+            // Círculo em metros reais (geodésico), não em unidades do Mercator.
+            const circulo = ol.geom.Polygon.circular([lon, lat], precisao, 64).transform("EPSG:4326", "EPSG:3857");
+            this._adicionar(this.camadaPosicaoUsuario, circulo, estiloPoligono({ cor: "#3182ce", largura: 1, opacidadePreenchimento: 0.12 }));
         }
-        L.circleMarker([lat, lon], { radius: 8, color: "#fff", weight: 3, fillColor: "#3182ce", fillOpacity: 1, interactive: false })
-            .addTo(this.camadaPosicaoUsuario);
+        this._adicionar(this.camadaPosicaoUsuario, new ol.geom.Point(paraMapa(lat, lon)),
+            estiloCirculo({ raio: 8, cor: "#ffffff", largura: 3, corPreenchimento: "#3182ce" }));
     }
 
     /**
-     * Desenha os metros candidatos (perto da posição) com o número do metro
-     * em cima; o selecionado fica amarelo. `aoTocar(chave)` é chamado ao
-     * tocar num deles. Cada item: { chave, indiceMetro, coordenada, plantado }.
+     * Desenha os metros candidatos (perto da posição) em bolinhas; o
+     * selecionado fica amarelo, maior e leva o número. `aoTocar(chave)` é
+     * chamado ao tocar num deles. Cada item: { chave, indiceMetro, coordenada, plantado }.
      */
     definirMetrosProximos(itens, chaveSelecionada, aoTocar) {
-        this.camadaMetrosProximos.clearLayers();
+        this.camadaMetrosProximos.clear();
         itens.forEach(item => {
             const selecionado = item.chave === chaveSelecionada;
             // Metros ficam a 1 m um do outro (~15 px no zoom 21): bolinhas pequenas
             // para não se sobreporem; só o selecionado é maior e leva o número
             // (os números de todos estão nos botões do painel).
-            const marcador = L.circleMarker([item.coordenada.lat, item.coordenada.lon], {
-                radius: selecionado ? 9 : 5,
-                color: selecionado ? "#b7791f" : "#e53e3e",
-                weight: selecionado ? 3 : 2,
-                fillColor: selecionado ? "#f6e05e" : (item.plantado ? "#68d391" : "#fff"),
-                fillOpacity: 0.95
-            })
-                .on("click", () => aoTocar(item.chave))
-                .addTo(this.camadaMetrosProximos);
-            if (selecionado) {
-                marcador.bindTooltip(String(item.indiceMetro), { permanent: true, direction: "top", offset: [0, -8], className: "rotulo-metro-proximo" });
-            }
+            this._adicionar(this.camadaMetrosProximos,
+                new ol.geom.Point(paraMapa(item.coordenada.lat, item.coordenada.lon)),
+                estiloCirculo({
+                    raio: selecionado ? 9 : 5,
+                    cor: selecionado ? "#b7791f" : "#e53e3e",
+                    largura: selecionado ? 3 : 2,
+                    corPreenchimento: selecionado ? "#f6e05e" : (item.plantado ? "#68d391" : "#ffffff"),
+                    opacidadePreenchimento: 0.95,
+                    texto: selecionado ? String(item.indiceMetro) : null
+                }),
+                { aoClicar: () => aoTocar(item.chave) });
         });
     }
 
     limparModoAndar() {
-        this.camadaPosicaoUsuario.clearLayers();
-        this.camadaMetrosProximos.clearLayers();
+        this.camadaPosicaoUsuario.clear();
+        this.camadaMetrosProximos.clear();
     }
 
     /**
      * Centraliza na posição. Com `zoomMinimo`, aproxima se estiver mais
      * afastado que isso (usado só no primeiro sinal); sem ele, respeita o
-     * zoom que a pessoa escolheu.
+     * zoom que a pessoa escolheu. Não mexe na rotação.
      */
     seguirPosicao(lat, lon, zoomMinimo = null) {
-        const zoom = zoomMinimo === null ? this.mapa.getZoom() : Math.max(this.mapa.getZoom(), zoomMinimo);
-        this.mapa.setView([lat, lon], zoom, { animate: true });
+        const zoomAtual = this.visao.getZoom();
+        const zoom = zoomMinimo === null ? zoomAtual : Math.max(zoomAtual, zoomMinimo);
+        this.visao.animate({ center: paraMapa(lat, lon), zoom, duration: 250 });
     }
 
     /** Avisa quando a pessoa arrasta o mapa com o dedo (para pausar o "seguir"). */
     aoArrastarManualmente(callback) {
-        this.mapa.on("dragstart", callback);
+        this.mapa.on("pointerdrag", callback);
     }
 
     iniciarTrilhaEmProgresso() {
-        this.camadaTrilhaEmProgresso.clearLayers();
-        this._linhaTrilhaEmProgresso = L.polyline([], { color: "#e53e3e", weight: 4 }).addTo(this.camadaTrilhaEmProgresso);
-        this._marcadorPosicaoAtual = L.circleMarker([0, 0], { radius: 7, color: "#e53e3e", fillColor: "#e53e3e", fillOpacity: 1 });
+        this.camadaTrilhaEmProgresso.clear();
+        this._linhaTrilhaEmProgresso = this._adicionar(this.camadaTrilhaEmProgresso,
+            new ol.geom.LineString([]), estiloLinha({ cor: "#e53e3e", largura: 4 }));
+        this._marcadorPosicaoAtual = new ol.Feature({ geometry: new ol.geom.Point([0, 0]) });
+        this._marcadorPosicaoAtual.setStyle(estiloCirculo({ raio: 7, cor: "#e53e3e", largura: 2, corPreenchimento: "#e53e3e" }));
     }
 
     atualizarTrilhaEmProgresso(pontos) {
         if (!this._linhaTrilhaEmProgresso) return;
-        this._linhaTrilhaEmProgresso.setLatLngs(pontos.map(p => [p.lat, p.lon]));
+        this._linhaTrilhaEmProgresso.getGeometry().setCoordinates(this._coordenadas(pontos));
     }
 
     atualizarPosicaoAtual(lat, lon) {
         if (!this._marcadorPosicaoAtual) return;
-        this._marcadorPosicaoAtual.setLatLng([lat, lon]);
-        if (!this.camadaTrilhaEmProgresso.hasLayer(this._marcadorPosicaoAtual)) {
-            this._marcadorPosicaoAtual.addTo(this.camadaTrilhaEmProgresso);
+        const posicao = paraMapa(lat, lon);
+        this._marcadorPosicaoAtual.getGeometry().setCoordinates(posicao);
+        if (!this.camadaTrilhaEmProgresso.hasFeature(this._marcadorPosicaoAtual)) {
+            this.camadaTrilhaEmProgresso.addFeature(this._marcadorPosicaoAtual);
         }
-        this.mapa.panTo([lat, lon]);
+        this.visao.animate({ center: posicao, duration: 200 });
     }
 
     pararTrilhaEmProgresso() {
-        this.camadaTrilhaEmProgresso.clearLayers();
+        this.camadaTrilhaEmProgresso.clear();
         this._linhaTrilhaEmProgresso = null;
         this._marcadorPosicaoAtual = null;
     }
@@ -337,7 +483,7 @@ export class MapaProjeto extends HTMLElement {
      * pontos durante a edição.
      */
     exibirPontosTrilhaEditavel(pontos, { indiceSelecionado = null, tMin, tMax, ajustarZoom = false } = {}) {
-        this.camadaPontosTrilha.clearLayers();
+        this.camadaPontosTrilha.clear();
         if (!pontos.length) return;
 
         const inicio = tMin ?? pontos[0].timestamp;
@@ -349,30 +495,31 @@ export class MapaProjeto extends HTMLElement {
             const cor = corGradiente(fracao);
             const selecionado = indice === indiceSelecionado;
 
-            L.circleMarker([ponto.lat, ponto.lon], {
-                // Raio generoso para toque (o alvo de 6px original era bom
-                // para mouse, mas pequeno demais para dedo — mínimo
-                // recomendado de toque é ~44px de diâmetro).
-                radius: selecionado ? 17 : 11,
-                color: selecionado ? "#1a202c" : cor,
-                weight: selecionado ? 3 : 2,
-                fillColor: cor,
-                fillOpacity: 0.9
-            })
-                .on("click", () => {
-                    this.dispatchEvent(new CustomEvent("ponto-trilha-clicado", { detail: { indice } }));
-                })
-                .addTo(this.camadaPontosTrilha);
+            this._adicionar(this.camadaPontosTrilha, new ol.geom.Point(paraMapa(ponto.lat, ponto.lon)),
+                estiloCirculo({
+                    // Raio generoso para toque (o alvo de 6px original era bom
+                    // para mouse, mas pequeno demais para dedo — mínimo
+                    // recomendado de toque é ~44px de diâmetro).
+                    raio: selecionado ? 17 : 11,
+                    cor: selecionado ? "#1a202c" : cor,
+                    largura: selecionado ? 3 : 2,
+                    corPreenchimento: cor,
+                    opacidadePreenchimento: 0.9
+                }),
+                {
+                    aoClicar: () => {
+                        this.dispatchEvent(new CustomEvent("ponto-trilha-clicado", { detail: { indice } }));
+                    }
+                });
         });
 
         if (ajustarZoom) {
-            const bounds = L.latLngBounds(pontos.map(p => [p.lat, p.lon]));
-            if (bounds.isValid()) this.mapa.fitBounds(bounds, { padding: [30, 30] });
+            this._enquadrar(ol.extent.boundingExtent(pontos.map(p => paraMapa(p.lat, p.lon))), 30);
         }
     }
 
     limparPontosTrilhaEditavel() {
-        this.camadaPontosTrilha.clearLayers();
+        this.camadaPontosTrilha.clear();
     }
 
     /**
@@ -381,33 +528,39 @@ export class MapaProjeto extends HTMLElement {
      * mostrar o casco convexo resultante antes de confirmar o salvamento.
      */
     definirPreviaPoligono(poligono) {
-        this.camadaPreviaPoligono.clearLayers();
+        this.camadaPreviaPoligono.clear();
         if (!poligono || poligono.length < 3) return;
 
-        const latLngs = poligono.map(p => [p.lat, p.lon]);
-        L.polygon(latLngs, { color: "#38a169", weight: 2, dashArray: "6 4", fillOpacity: 0.05 }).addTo(this.camadaPreviaPoligono);
+        this._adicionar(this.camadaPreviaPoligono, new ol.geom.Polygon([this._anel(poligono)]),
+            estiloPoligono({ cor: "#38a169", largura: 2, tracejado: [6, 4], opacidadePreenchimento: 0.05 }));
     }
 
     limparPreviaPoligono() {
-        this.camadaPreviaPoligono.clearLayers();
+        this.camadaPreviaPoligono.clear();
+    }
+
+    /** Enquadra uma extensão (coordenadas do mapa) com folga em px; mantém a rotação atual. */
+    _enquadrar(extensao, folgaPx) {
+        if (ol.extent.isEmpty(extensao)) return;
+        this.visao.fit(extensao, {
+            padding: [folgaPx, folgaPx, folgaPx, folgaPx],
+            maxZoom: 20,
+            duration: 0
+        });
     }
 
     ajustarZoomParaConteudo() {
-        const grupos = [this.camadaPerimetro, this.camadaLeituras, this.camadaIsolinhas, this.camadaLinhasSaf];
-        const bounds = L.latLngBounds([]);
-        grupos.forEach(grupo => {
-            grupo.eachLayer(camada => {
-                if (camada.getBounds) bounds.extend(camada.getBounds());
-                else if (camada.getLatLng) bounds.extend(camada.getLatLng());
-            });
+        const extensao = ol.extent.createEmpty();
+        [this.camadaPerimetro, this.camadaLeituras, this.camadaIsolinhas, this.camadaLinhasSaf].forEach(fonte => {
+            if (fonte.getFeatures().length > 0) ol.extent.extend(extensao, fonte.getExtent());
         });
-        if (bounds.isValid()) {
-            this.mapa.fitBounds(bounds, { padding: [30, 30] });
+        if (!ol.extent.isEmpty(extensao)) {
+            this._enquadrar(extensao, 30);
         }
     }
 
     invalidarTamanho() {
-        this.mapa?.invalidateSize();
+        this.mapa?.updateSize();
     }
 }
 
