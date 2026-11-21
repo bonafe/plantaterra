@@ -410,7 +410,12 @@ Na seção "Sistemas Agroflorestais" do painel do projeto (o menu principal dos 
 - **Vários candidatos, não um só.** O GPS de celular erra alguns metros, mais que o lado de um quadrado (1 m). Por isso o app mostra **todos os metros dentro de um raio** da posição (`geo/proximidade_metros.js#encontrarMetrosProximos`) em **todos os SAFs do projeto**, e a pessoa escolhe o certo olhando a linha de plantio. O raio acompanha a precisão do aparelho, com piso de 3 m e teto de 12 m (`raioDeBuscaM`); acima de 15 m de imprecisão o painel avisa "sinal fraco".
 - **Seleção:** botões de ≥44 px agrupados por fileira da matriz (cada SAF tem a sua matriz, §14.5a; uma linha de botões por fileira, por SAF e depois na ordem da matriz — havendo mais de um SAF, o nome da fileira leva o do SAF, ex: "SAF Sul · Linha 1"; as posições ficam estáveis enquanto o GPS oscila). Verde = já tem planta; borda destacada = metro mais próximo da posição; amarelo = selecionado. No mapa os candidatos são bolinhas pequenas (para não se sobreporem) e só o selecionado leva o número. Tocar de novo no selecionado desmarca. **A escolha não some se o GPS oscilar** e o metro sair do raio.
 - **"🌱 Plantar — Linha X, metro N"** abre o mesmo diálogo de planta da matriz (§14.6), cujo título leva o nome do SAF quando o projeto tem mais de um. O mapa só enquadra todas as linhas na entrada; depois de adicionar uma planta ele não reenquadra (`destacarLinhas(..., { ajustarZoom: false })`), para não desfazer o zoom da pessoa.
-- "Sair" desliga o GPS e volta ao painel do projeto; deixar a tela do projeto também desliga.
+- **"🧭 Girar com você" (frente para cima).** Botão que faz o mapa girar para que o lado em que a pessoa olha fique para cima — em campo ajuda a ver qual fileira está à frente. Desligado por padrão (norte para cima); o botão vira "🧭 Norte para cima" quando ligado.
+  - **Fonte do rumo:** a **bússola do aparelho** (`gps/captador_rumo.js`, `DeviceOrientation`). No Android (Chrome) usa `deviceorientationabsolute`, sem permissão; no iOS Safari a permissão da bússola só pode ser pedida dentro de um toque, por isso o pedido sai direto do clique do botão. O rumo é calculado com a inclinação do aparelho (`geo/rumo.js#calcularRumoBussola`, fórmula do exemplo da W3C), então vale com o celular na mão e não só deitado, e compensa a tela girada (`screen.orientation.angle`).
+  - **Reserva:** sem bússola (ou permissão negada), usa a **direção do GPS** (`coords.heading`) — só quando a velocidade passa de 0,7 m/s, porque parado o rumo do GPS é aleatório; o painel avisa para andar reto alguns passos.
+  - **Suavização:** a bússola chega dezenas de vezes por segundo e treme — média exponencial de ângulos pelo caminho mais curto (359°→1° anda 2°, não 358°), com no máximo 10 giros/s e ignorando mudanças menores que 2°. A bússola magnética erra de 10° a 20° perto de ferro, motores e linhas de energia.
+  - **Enquanto ligado**, o giro com os dedos e o botão de bússola de "voltar ao norte" ficam desativados (brigariam com o sensor); ao desligar, o mapa volta ao norte. O rumo é independente do GPS: parar o GPS não desliga o giro. Texto e números desenhados por nós não giram com o mapa. O ponto da pessoa fica no centro da tela (não deslocado para baixo, como em apps de navegação).
+- "Sair" desliga o GPS e o giro e volta ao painel do projeto; deixar a tela do projeto também desliga.
 
 ## 15. Roadmap de fases futuras (fora de escopo desta implementação)
 
@@ -467,7 +472,7 @@ src/html/                     # aplicação (código antigo do protótipo foi re
     componentes/              # web components (custom elements): mapa, captura GPS, painéis, editor de linha, apoiar, biblioteca de plantas
     dominio/                  # regras de negócio: nivelamento.js (§4), saf.js (§14.3), biblioteca_plantas.js (§15.1)
     geo/                      # geodesia.js, douglas_peucker.js, casco_convexo.js (§6.1), idw.js,
-                               # marching_squares.js, curvas_de_nivel.js, segmentador_linha.js (§14.5), proximidade_metros.js (§14.9)
+                               # marching_squares.js, curvas_de_nivel.js, segmentador_linha.js (§14.5), proximidade_metros.js e rumo.js (§14.9)
     gps/                      # captador de coordenada estabilizada (§5), captador de trilha (§6)
     kml/                      # leitura/escrita de KML/KMZ (§14.3, §14.4)
     db/                       # camada IndexedDB + exportadores (backup, GeoJSON/KML/KMZ)

@@ -15,6 +15,8 @@ import { areaPoligonoMetros2 } from "../geo/geodesia.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
 import { encontrarMetrosProximos, raioDeBuscaM } from "../geo/proximidade_metros.js";
+import { diferencaAngular, suavizarAngulo } from "../geo/rumo.js";
+import { CaptadorRumo } from "../gps/captador_rumo.js";
 import { agruparPlantasPorMetro } from "../dominio/saf.js";
 import { normalizarNome } from "../dominio/biblioteca_plantas.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
@@ -151,8 +153,10 @@ export class PainelProjeto extends HTMLElement {
                     <div class="andar-acoes">
                         <button type="button" class="botao-primario" data-acao="andar-alternar-gps">▶ Iniciar GPS</button>
                         <button type="button" class="botao-secundario" data-acao="andar-centralizar" hidden>🎯 Seguir</button>
+                        <button type="button" class="botao-secundario" data-acao="andar-rumo">🧭 Girar com você</button>
                         <button type="button" class="botao-secundario" data-acao="andar-sair">Sair</button>
                     </div>
+                    <p class="andar-status andar-rumo-status" hidden></p>
                     <div class="andar-candidatos"></div>
                     <button type="button" class="botao-primario botao-largo" data-acao="andar-plantar" disabled>Escolha um metro acima</button>
                 </div>
@@ -1004,7 +1008,66 @@ export class PainelProjeto extends HTMLElement {
                 this._andar.watchId = null;
             }
         };
-        this._pararGpsAndar = pararGps;
+
+        // ---- "Frente para cima": o mapa gira para o lado em que a pessoa olha ----
+        const botaoRumo = painel.querySelector('[data-acao="andar-rumo"]');
+        const statusRumo = painel.querySelector(".andar-rumo-status");
+        const VELOCIDADE_MINIMA_GPS_MS = 0.7; // abaixo disso o rumo do GPS é ruído
+        const FATOR_SUAVIZACAO = 0.25;
+        const INTERVALO_MINIMO_MS = 100;
+        const MUDANCA_MINIMA_GRAUS = 2;
+
+        const aplicarRumo = graus => {
+            const rumo = this._andar?.rumo;
+            if (!rumo?.ativo) return;
+            rumo.suave = rumo.suave === null ? graus : suavizarAngulo(rumo.suave, graus, FATOR_SUAVIZACAO);
+
+            // A bússola chega dezenas de vezes por segundo e treme: só gira quando muda de verdade.
+            const agora = performance.now();
+            if (agora - rumo.ultimaAplicacao < INTERVALO_MINIMO_MS) return;
+            if (rumo.aplicado !== null && Math.abs(diferencaAngular(rumo.aplicado, rumo.suave)) < MUDANCA_MINIMA_GRAUS) return;
+            rumo.aplicado = rumo.suave;
+            rumo.ultimaAplicacao = agora;
+            this.mapaElemento.girarParaRumo(rumo.suave);
+        };
+
+        const pararRumo = () => {
+            const rumo = this._andar?.rumo;
+            if (!rumo) return;
+            rumo.captador?.parar();
+            this._andar.rumo = null;
+            this.mapaElemento.definirRotacaoAutomatica(false);
+            botaoRumo.textContent = "🧭 Girar com você";
+            statusRumo.hidden = true;
+        };
+
+        this._pararGpsAndar = () => {
+            pararGps();
+            pararRumo();
+        };
+
+        botaoRumo.addEventListener("click", async () => {
+            if (this._andar.rumo) {
+                pararRumo();
+                return;
+            }
+
+            const estado = { ativo: true, captador: new CaptadorRumo(), temBussola: false, suave: null, aplicado: null, ultimaAplicacao: 0 };
+            this._andar.rumo = estado;
+            this.mapaElemento.definirRotacaoAutomatica(true);
+            botaoRumo.textContent = "🧭 Norte para cima";
+            statusRumo.hidden = false;
+            statusRumo.textContent = "Procurando a bússola do aparelho…";
+
+            estado.captador.addEventListener(CaptadorRumo.EVENTO_RUMO, evento => aplicarRumo(evento.detail.graus));
+            // Chamado direto do toque: o iOS só aceita pedir a permissão da bússola assim.
+            estado.temBussola = await estado.captador.iniciar();
+
+            if (this._andar?.rumo !== estado) return; // a pessoa desligou enquanto esperava
+            statusRumo.textContent = estado.temBussola
+                ? "O mapa gira com a bússola do aparelho: a frente é para cima."
+                : "Sem bússola neste aparelho (ou sem permissão): o mapa gira conforme você anda, pela direção do GPS. Ande reto por alguns passos para orientar.";
+        });
 
         const atualizarBotoes = () => {
             const gpsLigado = this._andar?.watchId != null;
@@ -1109,6 +1172,13 @@ export class PainelProjeto extends HTMLElement {
                         precisao: posicao.coords.accuracy
                     };
                     this.mapaElemento.definirPosicaoUsuario(this._andar.posicao);
+
+                    // Sem bússola, o rumo vem do GPS — só vale andando; parado ele é aleatório.
+                    const rumoAtivo = this._andar.rumo;
+                    if (rumoAtivo?.ativo && !rumoAtivo.temBussola
+                        && posicao.coords.speed >= VELOCIDADE_MINIMA_GPS_MS && Number.isFinite(posicao.coords.heading)) {
+                        aplicarRumo(posicao.coords.heading);
+                    }
                     if (this._andar.seguindo) {
                         // Zoom de aproximação só no primeiro sinal; depois vale o zoom da pessoa.
                         this.mapaElemento.seguirPosicao(this._andar.posicao.lat, this._andar.posicao.lon, this._andar.primeiroSinal ? 21 : null);
@@ -1164,7 +1234,7 @@ export class PainelProjeto extends HTMLElement {
         });
 
         this.querySelector('[data-acao="andar-saf"]').addEventListener("click", async () => {
-            this._andar = { watchId: null, seguindo: true, posicao: null, selecionada: null, quadrados: [] };
+            this._andar = { watchId: null, seguindo: true, posicao: null, selecionada: null, quadrados: [], rumo: null };
             await this._carregarDadosAndar();
             if (todosOsQuadrados().length === 0) {
                 this._andar = null;
@@ -1185,6 +1255,7 @@ export class PainelProjeto extends HTMLElement {
 
         painel.querySelector('[data-acao="andar-sair"]').addEventListener("click", async () => {
             pararGps();
+            pararRumo();
             this._andar = null;
             this.mapaElemento.limparModoAndar();
             this.mapaElemento.limparLinhasDestacadas();

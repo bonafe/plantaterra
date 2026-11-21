@@ -890,6 +890,11 @@ mapa-projeto {
     right: 0.5em;
 }
 
+/* "Frente para cima" ligado: o mapa gira sozinho, a bússola de voltar ao norte só atrapalharia. */
+mapa-projeto.rotacao-automatica .ol-rotate {
+    display: none;
+}
+
 .ol-attribution {
     font-size: 0.7rem;
 }

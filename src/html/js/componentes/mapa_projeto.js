@@ -445,6 +445,32 @@ export class MapaProjeto extends HTMLElement {
         this.mapa.on("pointerdrag", callback);
     }
 
+    /**
+     * Gira o mapa para que `graus` (rumo da bússola: 0 = norte, 90 = leste)
+     * fique para cima — "frente para cima". Sem animação: quem chama já
+     * suaviza o rumo, e animar a cada leitura do sensor atrasaria o giro.
+     */
+    girarParaRumo(graus) {
+        this.visao.setRotation(-graus * Math.PI / 180);
+    }
+
+    /**
+     * Enquanto o mapa gira sozinho (frente para cima), o giro com os dedos e a
+     * bússola de "voltar ao norte" ficam desligados — brigariam com o sensor.
+     * Ao desligar, o mapa volta ao norte.
+     */
+    definirRotacaoAutomatica(ativa) {
+        this.classList.toggle("rotacao-automatica", ativa);
+        this.mapa.getInteractions().forEach(interacao => {
+            if (interacao instanceof ol.interaction.PinchRotate || interacao instanceof ol.interaction.DragRotate) {
+                interacao.setActive(!ativa);
+            }
+        });
+        if (!ativa) {
+            this.visao.animate({ rotation: 0, duration: 300 });
+        }
+    }
+
     iniciarTrilhaEmProgresso() {
         this.camadaTrilhaEmProgresso.clear();
         this._linhaTrilhaEmProgresso = this._adicionar(this.camadaTrilhaEmProgresso,
