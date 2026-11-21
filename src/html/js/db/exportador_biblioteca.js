@@ -1,9 +1,16 @@
 import { plantaTerraDB } from "./plantaterra_db.js";
-import { baixarArquivo } from "./exportador_projeto.js";
+import { baixarArquivo } from "./util_arquivo.js";
 import { normalizarNome, sanearEspecie } from "../dominio/biblioteca_plantas.js";
 
 const FORMATO = "plantaterra-biblioteca";
 const FORMATO_VERSAO = 1;
+
+/** Só os campos de domínio (sem id/datas) — o mesmo formato serve ao arquivo da biblioteca e ao backup completo. */
+export function serializarEspecies(especies) {
+    return especies.map(({ nome_popular, nome_cientifico, ciclo, espacamento_recomendado_m, notas }) => ({
+        nome_popular, nome_cientifico, ciclo, espacamento_recomendado_m, notas
+    }));
+}
 
 export async function exportarBiblioteca() {
     const especies = await plantaTerraDB.listarEspecies();
@@ -11,9 +18,7 @@ export async function exportarBiblioteca() {
         formato: FORMATO,
         formato_versao: FORMATO_VERSAO,
         exportado_em: Date.now(),
-        especies: especies.map(({ nome_popular, nome_cientifico, ciclo, espacamento_recomendado_m, notas }) => ({
-            nome_popular, nome_cientifico, ciclo, espacamento_recomendado_m, notas
-        }))
+        especies: serializarEspecies(especies)
     };
     const data = new Date().toISOString().slice(0, 10);
     baixarArquivo(JSON.stringify(pacote, null, 2), `plantaterra-biblioteca-${data}.json`, "application/json");
@@ -46,11 +51,19 @@ export async function importarBiblioteca(arquivoOuTexto) {
         throw new Error("o arquivo não tem uma lista de espécies.");
     }
 
+    return mesclarEspecies(pacote.especies);
+}
+
+/**
+ * Mescla uma lista de espécies (já no formato serializado) ao catálogo local.
+ * @returns {{ adicionadas: number, jaExistentes: number, invalidas: number }}
+ */
+export async function mesclarEspecies(lista) {
     const existentes = await plantaTerraDB.listarEspecies();
     const nomesConhecidos = new Set(existentes.map(e => normalizarNome(e.nome_popular)));
 
     const resumo = { adicionadas: 0, jaExistentes: 0, invalidas: 0 };
-    for (const bruta of pacote.especies) {
+    for (const bruta of lista) {
         const especie = sanearEspecie(bruta);
         if (!especie) {
             resumo.invalidas++;

@@ -182,7 +182,23 @@ Camada de acesso: reaproveitar a ideia de `DBBase` do protótipo (uma pequena cl
 
 ### Exportação/Importação
 
-Botão "Exportar projeto" gera um único arquivo `.json` com todas as entidades acima filtradas por `projeto_id`, mais um `formato_versao` para permitir evolução do esquema. "Importar projeto" lê esse arquivo e recria os registros (novos UUIDs para evitar colisão, mas preservando os vínculos internos). Esse é o formato de **backup fiel** (round-trip completo dentro do próprio PlantaTerra).
+Botão **"⭳ Backup"** na lista de projetos abre um diálogo para escolher o que vai no arquivo: a **biblioteca de plantas** (§15.1) e/ou **quais projetos** (todos marcados por padrão; "Marcar/desmarcar todos"). Gera um único `.json` (`js/db/exportador_projeto.js#exportarBackup`):
+
+```
+{ formato: "plantaterra-backup", formato_versao: 1, exportado_em,
+  projetos: [ { projeto, trilhas, estacoes: [{ estacao, leituras }],
+                safs: [{ saf, linhas: [{ linha, plantas }] }], elementos_contexto } ],
+  biblioteca: [ { nome_popular, ... } ] | null }
+```
+
+Cada projeto leva **todas** as suas entidades: perímetros (`trilha_perimetro`, com pontos brutos, `ativo` e `visivel`), estações e leituras, SAFs, linhas de plantio, plantas e elementos de contexto. O botão de exportar dentro de um projeto (⭳ no painel) gera o mesmo formato com só aquele projeto.
+
+O botão **"⭱ Importar"** aceita qualquer arquivo do PlantaTerra e descobre o tipo sozinho: backup completo, **projeto avulso de versões antigas** (sem campo `formato`, só perímetros e estações) ou **só a biblioteca** (§15.1). Regras:
+- **Nunca sobrescreve.** Projetos entram como novos, com novos UUIDs (os vínculos internos — amarração entre estações, linhas de um SAF, plantas de uma linha — são refeitos). Se já existe um projeto com o mesmo nome, o importado recebe o sufixo " (importado)"; ao restaurar num aparelho vazio, os nomes voltam como eram.
+- **Biblioteca é mesclada** (espécie com nome já existente é mantida, ver §15.1) *antes* dos projetos, e o vínculo `planta_linha.especie_id` é refeito **pelo nome** da espécie, já que o id no aparelho de destino é outro; planta sem correspondência fica só com o nome em texto.
+- Arquivo inválido (JSON quebrado, formato desconhecido, projeto sem id/nome) é rejeitado com mensagem, sem importar nada parcialmente além do que já foi gravado antes do erro.
+
+Este é o formato de **backup fiel** (round-trip completo dentro do próprio PlantaTerra). Como todo dado do usuário só existe no aparelho (§10), é a única garantia real contra perda.
 
 Além dele, o projeto pode ser exportado em **GeoJSON** e **KML/KMZ** para uso em outras ferramentas GIS (QGIS, Google Earth) — ver §14.4, que unifica esses formatos com os dados de SAF/linhas de plantio.
 

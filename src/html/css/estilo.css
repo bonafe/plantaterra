@@ -758,6 +758,31 @@ dialog select {
     min-height: 44px;
 }
 
+.backup-cabecalho-projetos {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 16px 0 4px;
+}
+
+.backup-cabecalho-projetos .botao-icone-inline {
+    min-height: 44px;
+    padding: 0 8px;
+    color: var(--cor-primaria-escura);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.backup-lista-projetos {
+    max-height: 40dvh;
+    overflow-y: auto;
+}
+
+.backup-lista-projetos .campo-checkbox,
+.formulario-backup .campo-checkbox {
+    min-height: 44px;
+}
+
 .erro-formulario {
     color: var(--cor-perigo);
     font-size: 0.9rem;
