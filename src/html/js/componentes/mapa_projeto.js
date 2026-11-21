@@ -38,6 +38,8 @@ export class MapaProjeto extends HTMLElement {
         this.camadaLinhasSaf = L.layerGroup().addTo(this.mapa);
         this.camadaLinhaDestacada = L.layerGroup().addTo(this.mapa);
         this.camadaSegmentoAtivo = L.layerGroup().addTo(this.mapa);
+        this.camadaMetrosProximos = L.layerGroup().addTo(this.mapa);
+        this.camadaPosicaoUsuario = L.layerGroup().addTo(this.mapa);
         this.camadaTrilhaEmProgresso = L.layerGroup().addTo(this.mapa);
         this.camadaPontosTrilha = L.layerGroup().addTo(this.mapa);
         this.camadaPreviaPoligono = L.layerGroup().addTo(this.mapa);
@@ -183,7 +185,7 @@ export class MapaProjeto extends HTMLElement {
      * edição de plantas na matriz) com um marcador em cada metro que já tem
      * planta cadastrada.
      */
-    destacarLinhas(partes) {
+    destacarLinhas(partes, { ajustarZoom = true } = {}) {
         this.camadaLinhaDestacada.clearLayers();
 
         const todosOsPontos = [];
@@ -211,7 +213,7 @@ export class MapaProjeto extends HTMLElement {
         });
 
         const bounds = L.latLngBounds(todosOsPontos);
-        if (bounds.isValid()) {
+        if (ajustarZoom && bounds.isValid()) {
             this.mapa.fitBounds(bounds, { padding: [40, 40] });
         }
     }
@@ -238,6 +240,66 @@ export class MapaProjeto extends HTMLElement {
         }).addTo(this.camadaSegmentoAtivo);
 
         this.mapa.panTo([coordenada.lat, coordenada.lon]);
+    }
+
+    // ---- Modo "Andar na agrofloresta" (docs/especificacao.md secao 14.9) ----
+
+    /** Ponto azul na posição do GPS, com um círculo do tamanho da precisão informada. */
+    definirPosicaoUsuario({ lat, lon, precisao }) {
+        this.camadaPosicaoUsuario.clearLayers();
+        if (Number.isFinite(precisao)) {
+            L.circle([lat, lon], { radius: precisao, color: "#3182ce", weight: 1, fillColor: "#3182ce", fillOpacity: 0.12, interactive: false })
+                .addTo(this.camadaPosicaoUsuario);
+        }
+        L.circleMarker([lat, lon], { radius: 8, color: "#fff", weight: 3, fillColor: "#3182ce", fillOpacity: 1, interactive: false })
+            .addTo(this.camadaPosicaoUsuario);
+    }
+
+    /**
+     * Desenha os metros candidatos (perto da posição) com o número do metro
+     * em cima; o selecionado fica amarelo. `aoTocar(chave)` é chamado ao
+     * tocar num deles. Cada item: { chave, indiceMetro, coordenada, plantado }.
+     */
+    definirMetrosProximos(itens, chaveSelecionada, aoTocar) {
+        this.camadaMetrosProximos.clearLayers();
+        itens.forEach(item => {
+            const selecionado = item.chave === chaveSelecionada;
+            // Metros ficam a 1 m um do outro (~15 px no zoom 21): bolinhas pequenas
+            // para não se sobreporem; só o selecionado é maior e leva o número
+            // (os números de todos estão nos botões do painel).
+            const marcador = L.circleMarker([item.coordenada.lat, item.coordenada.lon], {
+                radius: selecionado ? 9 : 5,
+                color: selecionado ? "#b7791f" : "#e53e3e",
+                weight: selecionado ? 3 : 2,
+                fillColor: selecionado ? "#f6e05e" : (item.plantado ? "#68d391" : "#fff"),
+                fillOpacity: 0.95
+            })
+                .on("click", () => aoTocar(item.chave))
+                .addTo(this.camadaMetrosProximos);
+            if (selecionado) {
+                marcador.bindTooltip(String(item.indiceMetro), { permanent: true, direction: "top", offset: [0, -8], className: "rotulo-metro-proximo" });
+            }
+        });
+    }
+
+    limparModoAndar() {
+        this.camadaPosicaoUsuario.clearLayers();
+        this.camadaMetrosProximos.clearLayers();
+    }
+
+    /**
+     * Centraliza na posição. Com `zoomMinimo`, aproxima se estiver mais
+     * afastado que isso (usado só no primeiro sinal); sem ele, respeita o
+     * zoom que a pessoa escolheu.
+     */
+    seguirPosicao(lat, lon, zoomMinimo = null) {
+        const zoom = zoomMinimo === null ? this.mapa.getZoom() : Math.max(this.mapa.getZoom(), zoomMinimo);
+        this.mapa.setView([lat, lon], zoom, { animate: true });
+    }
+
+    /** Avisa quando a pessoa arrasta o mapa com o dedo (para pausar o "seguir"). */
+    aoArrastarManualmente(callback) {
+        this.mapa.on("dragstart", callback);
     }
 
     iniciarTrilhaEmProgresso() {

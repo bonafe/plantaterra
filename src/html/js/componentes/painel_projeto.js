@@ -14,6 +14,7 @@ import { calcularCascoConvexo } from "../geo/casco_convexo.js";
 import { areaPoligonoMetros2 } from "../geo/geodesia.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
+import { encontrarMetrosProximos, raioDeBuscaM } from "../geo/proximidade_metros.js";
 import { agruparPlantasPorMetro } from "../dominio/saf.js";
 import { normalizarNome } from "../dominio/biblioteca_plantas.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
@@ -120,6 +121,7 @@ export class PainelProjeto extends HTMLElement {
                         <div class="secao-cabecalho">
                             <button type="button" data-acao="fechar-editor-saf" class="botao-icone" aria-label="Voltar">←</button>
                             <h2 class="editor-saf-titulo"></h2>
+                            <button type="button" class="botao-secundario" data-acao="andar-saf">📍 Andar</button>
                         </div>
                         <p class="editor-saf-info"></p>
                         <div class="matriz-saf-wrapper">
@@ -140,6 +142,17 @@ export class PainelProjeto extends HTMLElement {
                         <button type="button" class="botao-primario" data-acao="salvar-edicao-pontos">Salvar alterações</button>
                         <button type="button" data-acao="fechar-editar-pontos">Fechar</button>
                     </div>
+                </div>
+
+                <div class="editor-andar-saf" hidden>
+                    <p class="andar-status">Toque em "Iniciar GPS" para ver os metros perto de você.</p>
+                    <div class="andar-acoes">
+                        <button type="button" class="botao-primario" data-acao="andar-alternar-gps">▶ Iniciar GPS</button>
+                        <button type="button" class="botao-secundario" data-acao="andar-centralizar" hidden>🎯 Seguir</button>
+                        <button type="button" class="botao-secundario" data-acao="andar-sair">Sair</button>
+                    </div>
+                    <div class="andar-candidatos"></div>
+                    <button type="button" class="botao-primario botao-largo" data-acao="andar-plantar" disabled>Escolha um metro acima</button>
                 </div>
 
                 <captura-gps></captura-gps>
@@ -251,6 +264,7 @@ export class PainelProjeto extends HTMLElement {
         this._wireEstacoes();
         this._wireCurvasDeNivel();
         this._wireSaf();
+        this._wireAndarSaf();
 
         await this.recarregarTudo();
     }
@@ -923,6 +937,219 @@ export class PainelProjeto extends HTMLElement {
 
     // ---------------- SAF / linhas de plantio ----------------
 
+    disconnectedCallback() {
+        this._pararGpsAndar?.();
+    }
+
+    // ---------------- Modo "Andar na agrofloresta" (docs/especificacao.md secao 14.9) ----------------
+
+    _wireAndarSaf() {
+        const painel = this.querySelector(".editor-andar-saf");
+        const status = painel.querySelector(".andar-status");
+        const botaoGps = painel.querySelector('[data-acao="andar-alternar-gps"]');
+        const botaoSeguir = painel.querySelector('[data-acao="andar-centralizar"]');
+        const botaoPlantar = painel.querySelector('[data-acao="andar-plantar"]');
+        const candidatos = painel.querySelector(".andar-candidatos");
+
+        const todosOsQuadrados = () => (this._matrizEmEdicao?.linhasLogicas ?? []).flatMap((fileira, indiceFileira) =>
+            fileira.quadrados.map(q => ({
+                ...q,
+                chave: `${q.linhaId}|${q.indiceMetro}`,
+                indiceFileira,
+                nomeFileira: fileira.nomeExibicao
+            })));
+
+        const pararGps = () => {
+            if (this._andar?.watchId != null) {
+                navigator.geolocation.clearWatch(this._andar.watchId);
+                this._andar.watchId = null;
+            }
+        };
+        this._pararGpsAndar = pararGps;
+
+        const atualizarBotoes = () => {
+            const gpsLigado = this._andar?.watchId != null;
+            botaoGps.textContent = gpsLigado ? "⏹ Parar GPS" : "▶ Iniciar GPS";
+            botaoSeguir.hidden = !(gpsLigado && !this._andar.seguindo);
+        };
+
+        this._renderizarModoAndar = () => {
+            const estado = this._andar;
+            if (!estado) return;
+
+            const quadrados = todosOsQuadrados();
+            const porChave = new Map(quadrados.map(q => [q.chave, q]));
+            const plantado = q => (this._plantasPorLinhaEmEdicao.get(q.linhaId) ?? []).some(p => p.indice_metro === q.indiceMetro);
+
+            let exibidos = [];
+            let maisProximo = null;
+            if (estado.posicao) {
+                const raio = raioDeBuscaM(estado.posicao.precisao);
+                const resultado = encontrarMetrosProximos(estado.posicao, quadrados, raio);
+                exibidos = resultado.proximos.map(m => m.quadrado);
+                maisProximo = resultado.maisProximo;
+
+                const precisaoTexto = Number.isFinite(estado.posicao.precisao) ? `±${Math.round(estado.posicao.precisao)} m` : "desconhecida";
+                status.textContent = `Precisão ${precisaoTexto} · mostrando metros em até ${Math.round(raio)} m` +
+                    (estado.posicao.precisao > 15 ? " — sinal fraco, confira a posição olhando a linha." : ".");
+            }
+
+            // A escolha da pessoa não some quando o GPS oscila e o metro sai do raio.
+            const selecionada = porChave.get(estado.selecionada) ?? null;
+            if (selecionada && !exibidos.some(q => q.chave === selecionada.chave)) {
+                exibidos = [...exibidos, selecionada];
+            }
+
+            // Uma linha de botões por fileira, ordenadas como na matriz: as posições
+            // dos botões ficam estáveis enquanto o GPS oscila.
+            const porFileira = new Map();
+            exibidos.forEach(q => {
+                if (!porFileira.has(q.indiceFileira)) porFileira.set(q.indiceFileira, []);
+                porFileira.get(q.indiceFileira).push(q);
+            });
+            const fileirasOrdenadas = [...porFileira.entries()].sort((a, b) => a[0] - b[0]);
+
+            if (!estado.posicao) {
+                candidatos.innerHTML = "";
+            } else if (exibidos.length === 0) {
+                candidatos.innerHTML = `<p class="ajuda-campo">Nenhum metro por perto.` +
+                    (maisProximo ? ` O mais próximo (${escaparHtml(maisProximo.quadrado.nomeFileira)}, metro ${maisProximo.quadrado.indiceMetro}) está a ${maisProximo.distanciaM.toFixed(0)} m.` : "") +
+                    `</p>`;
+            } else {
+                candidatos.innerHTML = fileirasOrdenadas.map(([, lista]) => `
+                    <div class="andar-fileira">
+                        <span class="andar-fileira-nome">${escaparHtml(lista[0].nomeFileira)}</span>
+                        <div class="andar-chips">
+                            ${lista.sort((a, b) => a.colunaGlobal - b.colunaGlobal).map(q => `
+                                <button type="button" data-chave="${q.chave}"
+                                    class="andar-chip${q.chave === estado.selecionada ? " andar-chip-selecionado" : ""}${plantado(q) ? " andar-chip-plantado" : ""}${maisProximo?.quadrado.chave === q.chave ? " andar-chip-mais-proximo" : ""}">
+                                    ${q.indiceMetro}
+                                </button>`).join("")}
+                        </div>
+                    </div>
+                `).join("");
+            }
+
+            this.mapaElemento.definirMetrosProximos(
+                exibidos.map(q => ({ chave: q.chave, indiceMetro: q.indiceMetro, coordenada: q.coordenada, plantado: plantado(q) })),
+                estado.selecionada,
+                chave => this._selecionarMetroAndar(chave)
+            );
+
+            botaoPlantar.disabled = !selecionada;
+            botaoPlantar.textContent = selecionada
+                ? `🌱 Plantar — ${selecionada.nomeFileira}, metro ${selecionada.indiceMetro}`
+                : "Escolha um metro acima";
+            atualizarBotoes();
+        };
+
+        this._selecionarMetroAndar = chave => {
+            if (!this._andar) return;
+            this._andar.selecionada = this._andar.selecionada === chave ? null : chave;
+            this._renderizarModoAndar();
+        };
+
+        candidatos.addEventListener("click", evento => {
+            const chip = evento.target.closest("[data-chave]");
+            if (chip) this._selecionarMetroAndar(chip.dataset.chave);
+        });
+
+        const iniciarGps = () => {
+            if (!("geolocation" in navigator)) {
+                status.textContent = "Este navegador não tem geolocalização.";
+                return;
+            }
+            this._andar.seguindo = true;
+            this._andar.primeiroSinal = true;
+            status.textContent = "Aguardando sinal do GPS…";
+            this._andar.watchId = navigator.geolocation.watchPosition(
+                posicao => {
+                    this._andar.posicao = {
+                        lat: posicao.coords.latitude,
+                        lon: posicao.coords.longitude,
+                        precisao: posicao.coords.accuracy
+                    };
+                    this.mapaElemento.definirPosicaoUsuario(this._andar.posicao);
+                    if (this._andar.seguindo) {
+                        // Zoom de aproximação só no primeiro sinal; depois vale o zoom da pessoa.
+                        this.mapaElemento.seguirPosicao(this._andar.posicao.lat, this._andar.posicao.lon, this._andar.primeiroSinal ? 21 : null);
+                        this._andar.primeiroSinal = false;
+                    }
+                    this._renderizarModoAndar();
+                },
+                erro => {
+                    pararGps();
+                    status.textContent = erro.code === erro.PERMISSION_DENIED
+                        ? "Permissão de localização negada. Libere o acesso à localização nas configurações do navegador."
+                        : "Não foi possível obter a posição. Tente de novo em campo aberto.";
+                    atualizarBotoes();
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+            );
+            atualizarBotoes();
+        };
+
+        botaoGps.addEventListener("click", () => {
+            if (this._andar.watchId != null) {
+                pararGps();
+                this._andar.posicao = null;
+                this.mapaElemento.limparModoAndar();
+                status.textContent = "GPS parado. Toque em \"Iniciar GPS\" para continuar.";
+                this._renderizarModoAndar();
+            } else {
+                iniciarGps();
+            }
+        });
+
+        botaoSeguir.addEventListener("click", () => {
+            this._andar.seguindo = true;
+            if (this._andar.posicao) {
+                this.mapaElemento.seguirPosicao(this._andar.posicao.lat, this._andar.posicao.lon);
+            }
+            atualizarBotoes();
+        });
+
+        // Arrastar o mapa com o dedo pausa o "seguir" — senão o próximo sinal de
+        // GPS puxaria o mapa de volta enquanto a pessoa olha outra parte.
+        this.mapaElemento.aoArrastarManualmente(() => {
+            if (this._andar?.seguindo) {
+                this._andar.seguindo = false;
+                atualizarBotoes();
+            }
+        });
+
+        botaoPlantar.addEventListener("click", () => {
+            const quadrado = todosOsQuadrados().find(q => q.chave === this._andar?.selecionada);
+            if (!quadrado) return;
+            this._abrirDialogoMetro(this._linhasDoSafEmEdicaoPorId.get(quadrado.linhaId), quadrado.indiceMetro, quadrado.coordenada);
+        });
+
+        this.querySelector('[data-acao="andar-saf"]').addEventListener("click", () => {
+            if (todosOsQuadrados().length === 0) {
+                alert("Este SAF ainda não tem linhas com metros para escolher.");
+                return;
+            }
+            this._andar = { watchId: null, seguindo: true, posicao: null, selecionada: null };
+            // Mesmo padrão do editor de pontos: esconder de verdade o painel
+            // inferior (não só visualmente) e deixar o mapa ocupar a tela.
+            this.querySelector(".painel-inferior").hidden = true;
+            painel.hidden = false;
+            this.mapaElemento.invalidarTamanho();
+            status.textContent = "Toque em \"Iniciar GPS\" para ver os metros perto de você.";
+            this._renderizarModoAndar();
+        });
+
+        painel.querySelector('[data-acao="andar-sair"]').addEventListener("click", async () => {
+            pararGps();
+            this._andar = null;
+            this.mapaElemento.limparModoAndar();
+            painel.hidden = true;
+            this.querySelector(".painel-inferior").hidden = false;
+            this.mapaElemento.invalidarTamanho();
+            await this._recarregarEditorSaf();
+        });
+    }
+
     _wireSaf() {
         const dialogoImportar = this.querySelector(".dialogo-importar-saf");
         const conteudoImportar = this.querySelector(".importar-saf-conteudo");
@@ -1151,6 +1378,7 @@ export class PainelProjeto extends HTMLElement {
             this._plantasPorLinhaEmEdicao = new Map(linhas.map((l, indice) => [l.id, plantasPorLinha[indice]]));
 
             const matriz = calcularMatrizSaf(linhas);
+            this._matrizEmEdicao = matriz;
             const totalPlantas = plantasPorLinha.reduce((soma, lista) => soma + lista.length, 0);
 
             tituloEditor.textContent = saf.nome;
@@ -1172,7 +1400,9 @@ export class PainelProjeto extends HTMLElement {
                     .filter(ponto => ponto.coordenada);
                 return { linha, pontosPlantados };
             });
-            this.mapaElemento.destacarLinhas(partesParaMapa);
+            // No modo "Andar" o mapa acompanha a pessoa: não pode voltar a enquadrar o SAF inteiro.
+            this.mapaElemento.destacarLinhas(partesParaMapa, { ajustarZoom: !this._andar });
+            this._renderizarModoAndar?.();
         };
 
         this._abrirDialogoMetro = (linha, indiceMetro, coordenada) => {

@@ -384,6 +384,17 @@ Elementos de contexto **não têm estado do usuário** (diferente de `linha_plan
 
 No mapa (`mapa_projeto.js#definirElementosContexto`), são desenhados em cinza neutro, por baixo de todas as outras camadas, sem interação — só para dar contexto visual. Na exportação (GeoJSON/KML/KMZ, §14.4), entram como uma pasta `"Contexto"` separada, mantendo o ciclo de importar → editar → exportar coerente com o resto do app.
 
+### 14.9 Modo "Andar na agrofloresta" (GPS ao vivo no SAF)
+
+Dentro do editor de um SAF, o botão "📍 Andar" abre um modo de tela cheia (mesmo padrão do editor de pontos da trilha: o painel inferior é escondido de verdade e o mapa ocupa a tela, com uma faixa compacta embaixo) para escolher o quadrado de plantio andando pelo campo.
+
+- **O GPS só liga quando a pessoa pede** ("▶ Iniciar GPS" / "⏹ Parar GPS"), por causa da bateria. Usa `watchPosition` com `enableHighAccuracy`, direto — sem a estabilização por amostras do §5, que serve a pontos únicos.
+- **Mapa:** ponto azul com círculo do tamanho da precisão informada. No primeiro sinal aproxima para o zoom 21 (1 m ≈ 15 px); depois respeita o zoom escolhido pela pessoa. Segue a posição até a pessoa arrastar o mapa — aí o "seguir" pausa e aparece "🎯 Seguir" para retomar.
+- **Vários candidatos, não um só.** O GPS de celular erra alguns metros, mais que o lado de um quadrado (1 m). Por isso o app mostra **todos os metros dentro de um raio** da posição (`geo/proximidade_metros.js#encontrarMetrosProximos`), e a pessoa escolhe o certo olhando a linha de plantio. O raio acompanha a precisão do aparelho, com piso de 3 m e teto de 12 m (`raioDeBuscaM`); acima de 15 m de imprecisão o painel avisa "sinal fraco".
+- **Seleção:** botões de ≥44 px agrupados por fileira da matriz (uma linha de botões por fileira, na ordem da matriz — as posições ficam estáveis enquanto o GPS oscila). Verde = já tem planta; borda destacada = metro mais próximo da posição; amarelo = selecionado. No mapa os candidatos são bolinhas pequenas (para não se sobreporem) e só o selecionado leva o número. Tocar de novo no selecionado desmarca. **A escolha não some se o GPS oscilar** e o metro sair do raio.
+- **"🌱 Plantar — Linha X, metro N"** abre o mesmo diálogo de planta da matriz (§14.6). Enquanto o modo está ativo, recarregar o SAF após adicionar uma planta não reenquadra o mapa no SAF inteiro (`destacarLinhas(..., { ajustarZoom: false })`).
+- Sair para o editor normal (botão "Sair") desliga o GPS; deixar a tela do projeto também.
+
 ## 15. Roadmap de fases futuras (fora de escopo desta implementação)
 
 Estas fases reaproveitam `planta_linha` como núcleo, então são descritas aqui para guiar decisões de modelo de dados desde já (evitar retrabalho), mas **não fazem parte da implementação atual**:
@@ -439,7 +450,7 @@ src/html/                     # aplicação (código antigo do protótipo foi re
     componentes/              # web components (custom elements): mapa, captura GPS, painéis, editor de linha, apoiar, biblioteca de plantas
     dominio/                  # regras de negócio: nivelamento.js (§4), saf.js (§14.3), biblioteca_plantas.js (§15.1)
     geo/                      # geodesia.js, douglas_peucker.js, casco_convexo.js (§6.1), idw.js,
-                               # marching_squares.js, curvas_de_nivel.js, segmentador_linha.js (§14.5)
+                               # marching_squares.js, curvas_de_nivel.js, segmentador_linha.js (§14.5), proximidade_metros.js (§14.9)
     gps/                      # captador de coordenada estabilizada (§5), captador de trilha (§6)
     kml/                      # leitura/escrita de KML/KMZ (§14.3, §14.4)
     db/                       # camada IndexedDB + exportadores (backup, GeoJSON/KML/KMZ)
