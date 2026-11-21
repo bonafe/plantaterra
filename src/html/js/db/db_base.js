@@ -1,10 +1,21 @@
 /**
  * Wrapper Promise-based mínimo sobre IndexedDB.
  * Cada subclasse define nomeBanco/versao e as migrações em funcoesDeMigracao.
+ *
+ * Dois eventos (é um EventTarget) avisam de problemas de versão entre abas,
+ * que de outra forma deixariam o app "vazio" sem explicação:
+ *  - "bloqueado": esta aba precisa atualizar o banco, mas outra aba ainda
+ *    segura uma conexão antiga aberta (a abertura fica pendurada até ela fechar).
+ *  - "versao-alterada": outra aba atualizou o banco; esta conexão foi fechada
+ *    (para não bloquear a outra) e precisa recarregar a página.
  */
-export class DBBase {
+export class DBBase extends EventTarget {
+
+    static EVENTO_BLOQUEADO = "bloqueado";
+    static EVENTO_VERSAO_ALTERADA = "versao-alterada";
 
     constructor(nomeBanco, versao, funcoesDeMigracao) {
+        super();
         this.nomeBanco = nomeBanco;
         this.versao = versao;
         this.funcoesDeMigracao = funcoesDeMigracao;
@@ -26,7 +37,18 @@ export class DBBase {
                 });
             };
 
-            request.onsuccess = () => resolve(request.result);
+            request.onblocked = () => {
+                this.dispatchEvent(new CustomEvent(DBBase.EVENTO_BLOQUEADO));
+            };
+
+            request.onsuccess = () => {
+                const banco = request.result;
+                banco.onversionchange = () => {
+                    banco.close();
+                    this.dispatchEvent(new CustomEvent(DBBase.EVENTO_VERSAO_ALTERADA));
+                };
+                resolve(banco);
+            };
             request.onerror = () => reject(request.error);
         });
     }
