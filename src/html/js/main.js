@@ -1,6 +1,7 @@
 import "./componentes/lista_projetos.js";
 import "./componentes/painel_projeto.js";
 import "./componentes/tela_apoiar.js";
+import "./componentes/tela_biblioteca.js";
 import "./consentimento_analytics.js";
 import { VERSAO_APP } from "./versao.js";
 import { urlFeedbackWhatsApp } from "./feedback_whatsapp.js";
@@ -21,6 +22,8 @@ function renderizarRota() {
 
     if (hash === "#/apoiar") {
         app.appendChild(document.createElement("tela-apoiar"));
+    } else if (hash === "#/biblioteca") {
+        app.appendChild(document.createElement("tela-biblioteca"));
     } else if (correspondenciaProjeto) {
         const painel = document.createElement("painel-projeto");
         painel.dataset.id = correspondenciaProjeto[1];

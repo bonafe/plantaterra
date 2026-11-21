@@ -17,6 +17,7 @@ export class ListaProjetos extends HTMLElement {
 
                 <div class="acoes-lista-projetos">
                     <button type="button" data-acao="novo-projeto" class="botao-primario">+ Novo projeto</button>
+                    <a href="#/biblioteca" class="botao-secundario">🌱 Biblioteca de plantas</a>
                     <label class="botao-secundario botao-arquivo">
                         Importar projeto
                         <input type="file" accept="application/json" data-acao="importar-arquivo" hidden />

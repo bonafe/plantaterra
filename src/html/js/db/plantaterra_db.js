@@ -1,7 +1,7 @@
 import { DBBase } from "./db_base.js";
 
 const NOME_BANCO = "PlantaTerraDB";
-const VERSAO = 3;
+const VERSAO = 4;
 
 const funcoesDeMigracao = [
     banco => {
@@ -31,6 +31,10 @@ const funcoesDeMigracao = [
     banco => {
         const osContexto = banco.createObjectStore("elemento_contexto", { keyPath: "id" });
         osContexto.createIndex("index_projeto_id", "projeto_id", { unique: false });
+    },
+    banco => {
+        const osEspecie = banco.createObjectStore("especie", { keyPath: "id" });
+        osEspecie.createIndex("index_nome_popular", "nome_popular", { unique: false });
     }
 ];
 
@@ -292,12 +296,13 @@ class PlantaTerraDB extends DBBase {
 
     // ---- planta_linha ----
 
-    async criarPlanta({ linhaId, indiceMetro, especie, quantidade = null, observacao = null, dataPlantio = null }) {
+    async criarPlanta({ linhaId, indiceMetro, especie, especieId = null, quantidade = null, observacao = null, dataPlantio = null }) {
         const planta = {
             id: this.gerarId(),
             linha_id: linhaId,
             indice_metro: indiceMetro,
             especie,
+            especie_id: especieId,
             quantidade,
             observacao,
             data_plantio: dataPlantio,
@@ -314,6 +319,39 @@ class PlantaTerraDB extends DBBase {
     async listarPlantasDaLinha(linhaId) {
         const plantas = await this.obterTodos("planta_linha", "index_linha_id", linhaId);
         return plantas.sort((a, b) => a.indice_metro - b.indice_metro);
+    }
+
+    // ---- especie (biblioteca de plantas, global — não pertence a nenhum projeto) ----
+
+    async criarEspecie({ nomePopular, nomeCientifico = null, ciclo = null, espacamentoRecomendadoM = null, notas = null }) {
+        const agora = Date.now();
+        const especie = {
+            id: this.gerarId(),
+            nome_popular: nomePopular,
+            nome_cientifico: nomeCientifico,
+            ciclo,
+            espacamento_recomendado_m: espacamentoRecomendadoM,
+            notas,
+            criado_em: agora,
+            atualizado_em: agora
+        };
+        await this.salvar("especie", especie);
+        return especie;
+    }
+
+    async atualizarEspecie(especie) {
+        especie.atualizado_em = Date.now();
+        return this.salvar("especie", especie);
+    }
+
+    async listarEspecies() {
+        const especies = await this.obterTodos("especie");
+        return especies.sort((a, b) => a.nome_popular.localeCompare(b.nome_popular, "pt-BR"));
+    }
+
+    /** Remove só do catálogo: plantas já cadastradas em linhas mantêm o nome em texto (`planta_linha.especie`). */
+    async removerEspecie(id) {
+        return this.remover("especie", id);
     }
 
     // ---- elemento_contexto ----

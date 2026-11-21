@@ -188,7 +188,7 @@ Além dele, o projeto pode ser exportado em **GeoJSON** e **KML/KMZ** para uso e
 
 ## 9. Estrutura de telas
 
-1. **Lista de projetos** (tela inicial): criar novo projeto, abrir existente, importar de arquivo.
+1. **Lista de projetos** (tela inicial): criar novo projeto, abrir existente, importar de arquivo, abrir a **Biblioteca de plantas** (§15.1, rota `#/biblioteca`).
 2. **Painel do projeto**: mapa Leaflet ocupando a maior parte da tela, com abas/botões flutuantes para alternar camadas (perímetro, estações+leituras, curvas de nível) e menu de ações:
    - "Mapear perímetro" → tela de captura de trilha (§6).
    - "Nova estação de nível" → formulário: capturar coordenada (§5) + altura do instrumento.
@@ -354,7 +354,8 @@ linha_plantio {
 planta_linha {
   id, linha_id,
   indice_metro: number,           // 0-based, segmento [indice, indice+1) da linha
-  especie: string,
+  especie: string,                // nome em texto, sempre preenchido (fallback e exibição)
+  especie_id: string | null,      // vínculo opcional com `especie` da biblioteca (§15.1); registros antigos não têm
   quantidade: number | null,
   observacao: string | null,
   data_plantio: timestamp | null,
@@ -388,8 +389,29 @@ No mapa (`mapa_projeto.js#definirElementosContexto`), são desenhados em cinza n
 Estas fases reaproveitam `planta_linha` como núcleo, então são descritas aqui para guiar decisões de modelo de dados desde já (evitar retrabalho), mas **não fazem parte da implementação atual**:
 
 - **Fotos por planta/data**: nova entidade `foto_planta { id, planta_linha_id, data, blob_ou_referencia, observacao }`, permitindo registrar a evolução de uma planta específica ao longo do tempo (galeria por `planta_linha_id`).
-- **Biblioteca de plantas**: catálogo `especie { id, nome_popular, nome_cientifico, ciclo, espacamento_recomendado, notas }`, separado de texto livre. `planta_linha.especie` (string) evolui para `planta_linha.especie_id` (referência ao catálogo), mantendo o campo de texto livre como fallback para espécies ainda não cadastradas.
+- ~~**Biblioteca de plantas**~~ — implementada, ver §15.1.
 - **Horta**: um contexto de cultivo irmão de "Linha de Plantio", mas para canteiros (grade 2D em vez de segmentos ao longo de uma linha 1D). Deve compartilhar `planta_linha`/`especie`/`foto_planta` na medida do possível (ex: renomear o vínculo para uma entidade mais genérica `local_plantio` que tanto uma `LinhaPlantio` quanto um `Canteiro` possam implementar), para que fotos e biblioteca de plantas funcionem igual nos dois contextos.
+
+### 15.1 Biblioteca de plantas (implementada)
+
+Catálogo de espécies **global do aparelho** — não pertence a nenhum projeto, é reaproveitado por todos. Tela própria (`js/componentes/tela_biblioteca.js`, rota `#/biblioteca`, botão "🌱 Biblioteca de plantas" na lista de projetos): lista com busca (ignora caixa e acento, procura em nome popular e científico), criar, editar e excluir espécie.
+
+```
+especie {                          // object store `especie` (IndexedDB v4)
+  id,
+  nome_popular: string,            // obrigatório, único (ignorando caixa/acento)
+  nome_cientifico: string | null,
+  ciclo: "anual" | "bienal" | "perene" | null,
+  espacamento_recomendado_m: number | null,
+  notas: string | null,
+  criado_em, atualizado_em
+}
+```
+
+- **Começa vazia.** Não há espécies pré-cadastradas: valores agronômicos são da pessoa (ou de um catálogo que ela importe).
+- **Vínculo com `planta_linha` é opcional.** No diálogo de planta de um metro, o campo "Espécie" sugere as espécies da biblioteca (`<datalist>`). Se o texto digitado coincide com o nome popular de uma espécie do catálogo (comparação sem caixa/acento, `dominio/biblioteca_plantas.js#normalizarNome`), a planta grava `especie_id`; qualquer outro texto vale como texto livre (`especie_id: null`). O nome em texto (`planta_linha.especie`) é sempre gravado, então registros antigos, exportações e o mapa continuam funcionando sem migração de dados.
+- **Editar ou excluir uma espécie não altera plantas já cadastradas** — elas guardam o nome em texto. (Renomear no catálogo, portanto, não renomeia as plantas existentes.)
+- **Importar/exportar** em JSON (`js/db/exportador_biblioteca.js`): `{ formato: "plantaterra-biblioteca", formato_versao: 1, exportado_em, especies: [...] }`, só com os campos de domínio (sem `id`/datas). Importar **mescla**: espécie cujo nome popular já existe é mantida como está (nunca sobrescrita), registros sem nome são ignorados, e `ciclo`/`espacamento` inválidos viram `null` (`dominio/biblioteca_plantas.js#sanearEspecie`). A biblioteca não entra no backup de projeto (§8), por ser global.
 
 ## 16. Fora de escopo / trabalho futuro
 
@@ -399,7 +421,7 @@ Estas fases reaproveitam `planta_linha` como núcleo, então são descritas aqui
 - Suavização avançada de curvas de nível (splines) além do que o Marching Squares produz.
 - Cálculo de volume de terraplenagem/corte-aterro a partir do relevo.
 - Importação de perímetro/curvas de nível a partir de um KML externo (só o fluxo próprio de GPS faz isso — ver §14.4).
-- Roadmap de plantas (fotos, biblioteca de espécies, horta) — ver §15.
+- Roadmap de plantas (fotos, horta) — ver §15.
 
 ## 17. Estrutura de pastas (código atual)
 
@@ -414,8 +436,8 @@ src/html/                     # aplicação (código antigo do protótipo foi re
     dados_apoio.js            # strings Pix "copia e cola" (§11.1)
     feedback_whatsapp.js      # link de feedback via WhatsApp (§11.2)
     consentimento_analytics.js # banner opt-in + carga do gtag.js (§12)
-    componentes/              # web components (custom elements): mapa, captura GPS, painéis, editor de linha, apoiar
-    dominio/                  # regras de negócio: nivelamento.js (§4), saf.js (§14.3)
+    componentes/              # web components (custom elements): mapa, captura GPS, painéis, editor de linha, apoiar, biblioteca de plantas
+    dominio/                  # regras de negócio: nivelamento.js (§4), saf.js (§14.3), biblioteca_plantas.js (§15.1)
     geo/                      # geodesia.js, douglas_peucker.js, casco_convexo.js (§6.1), idw.js,
                                # marching_squares.js, curvas_de_nivel.js, segmentador_linha.js (§14.5)
     gps/                      # captador de coordenada estabilizada (§5), captador de trilha (§6)

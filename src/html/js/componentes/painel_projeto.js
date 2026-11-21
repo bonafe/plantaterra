@@ -15,6 +15,7 @@ import { areaPoligonoMetros2 } from "../geo/geodesia.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
 import { agruparPlantasPorMetro } from "../dominio/saf.js";
+import { normalizarNome } from "../dominio/biblioteca_plantas.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
 import { escaparHtml, formatarMetros, formatarArea, formatarData, formatarDataSimples, parsearDataBr } from "./util_dom.js";
 import "./mapa_projeto.js";
@@ -219,7 +220,8 @@ export class PainelProjeto extends HTMLElement {
                     <ul class="lista-plantas-metro"></ul>
                     <form class="formulario-planta">
                         <label>Espécie / nome da planta
-                            <input type="text" name="especie" required maxlength="80" />
+                            <input type="text" name="especie" required maxlength="80" list="sugestoes-especies" autocomplete="off" />
+                            <datalist id="sugestoes-especies"></datalist>
                         </label>
                         <label>Quantidade (opcional)
                             <input type="number" name="quantidade" min="1" step="1" />
@@ -1066,6 +1068,17 @@ export class PainelProjeto extends HTMLElement {
         const tituloPlanta = this.querySelector(".planta-metro-titulo");
         const listaPlantasMetro = this.querySelector(".lista-plantas-metro");
         const formularioPlanta = this.querySelector(".formulario-planta");
+        const listaSugestoesEspecies = this.querySelector("#sugestoes-especies");
+        this._especiesDoCatalogo = [];
+
+        // Recarregado a cada abertura do diálogo: a biblioteca é global e pode
+        // ter mudado desde a última vez (editada em outra tela).
+        const carregarSugestoesEspecies = async () => {
+            this._especiesDoCatalogo = await plantaTerraDB.listarEspecies();
+            listaSugestoesEspecies.innerHTML = this._especiesDoCatalogo
+                .map(e => `<option value="${escaparHtml(e.nome_popular)}">${escaparHtml(e.nome_cientifico ?? "")}</option>`)
+                .join("");
+        };
 
         this.querySelector('[data-acao="fechar-editor-saf"]').addEventListener("click", () => {
             secaoEditor.hidden = true;
@@ -1101,10 +1114,17 @@ export class PainelProjeto extends HTMLElement {
                 }
             }
 
+            // Nome igual (sem caixa/acento) a uma espécie da biblioteca vincula
+            // ao catálogo; qualquer outro texto continua valendo como texto livre.
+            const especieDigitada = dados.get("especie").trim();
+            const chaveDigitada = normalizarNome(especieDigitada);
+            const especieDoCatalogo = this._especiesDoCatalogo.find(e => normalizarNome(e.nome_popular) === chaveDigitada);
+
             await plantaTerraDB.criarPlanta({
                 linhaId: this._linhaAtualParaPlanta.id,
                 indiceMetro: this._metroEmEdicao,
-                especie: dados.get("especie").trim(),
+                especie: especieDigitada,
+                especieId: especieDoCatalogo?.id ?? null,
                 quantidade: dados.get("quantidade") ? Number(dados.get("quantidade")) : null,
                 observacao: dados.get("observacao").trim() || null,
                 dataPlantio
@@ -1192,6 +1212,7 @@ export class PainelProjeto extends HTMLElement {
             });
 
             formularioPlanta.reset();
+            carregarSugestoesEspecies();
             dialogoPlanta.showModal();
         };
     }
