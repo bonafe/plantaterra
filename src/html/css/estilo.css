@@ -666,6 +666,11 @@ andar-gps[hidden] {
 .matriz-saf {
     display: grid;
     gap: 4px;
+    /* A grade precisa ter a largura de TODAS as colunas, não só a da tela: o nome da fileira
+       (position: sticky) só fica fixo dentro do bloco da grade, e numa grade mais estreita que
+       o conteúdo ele saía junto com o bloco ao rolar para a direita ("sumia"). */
+    width: max-content;
+    min-width: 100%;
 }
 
 /*
