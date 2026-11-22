@@ -224,6 +224,7 @@ export class MapaProjeto extends HTMLElement {
         if (!("geolocation" in navigator)) return;
         navigator.geolocation.getCurrentPosition(
             posicao => {
+                //O projeto manda: se o mapa já foi enquadrado no conteúdo (perímetro, linhas...), o GPS não mexe
                 if (!this._centralizadoAutomaticamente) {
                     this.visao.setCenter(paraMapa(posicao.coords.latitude, posicao.coords.longitude));
                     this.visao.setZoom(17);
@@ -584,8 +585,14 @@ export class MapaProjeto extends HTMLElement {
         [this.camadaPerimetro, this.camadaLeituras, this.camadaIsolinhas, this.camadaLinhasSaf].forEach(fonte => {
             if (fonte.getFeatures().length > 0) ol.extent.extend(extensao, fonte.getExtent());
         });
+        if (ol.extent.isEmpty(extensao)) {
+            //Sem perímetro nem leituras: o contexto (KMZ importado) ainda diz onde fica a propriedade
+            if (this.camadaContexto.getFeatures().length > 0) ol.extent.extend(extensao, this.camadaContexto.getExtent());
+        }
         if (!ol.extent.isEmpty(extensao)) {
             this._enquadrar(extensao, 30);
+            //Enquadrou a propriedade inteira: a posição do GPS, que chega depois, não pode sobrescrever
+            this._centralizadoAutomaticamente = true;
         }
     }
 
