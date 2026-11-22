@@ -26,6 +26,7 @@ import "./editor_pontos_trilha.js";
 import "./dialogo_estacao.js";
 import "./dialogo_leitura.js";
 import "./lista_estacoes.js";
+import "./dialogo_historico_perimetro.js";
 
 const CHAVE_ULTIMO_LUGAR = "plantaterra:ultimo-lugar";
 
@@ -165,13 +166,7 @@ export class PainelProjeto extends HTMLElement {
                     </div>
                 </dialog>
 
-                <dialog class="dialogo-historico-perimetro">
-                    <h2>Histórico de rodadas do perímetro</h2>
-                    <ul class="lista-historico-perimetro"></ul>
-                    <div class="acoes-formulario">
-                        <button type="button" data-acao="fechar-historico-perimetro">Fechar</button>
-                    </div>
-                </dialog>
+                <dialogo-historico-perimetro></dialogo-historico-perimetro>
 
                 <dialogo-estacao></dialogo-estacao>
                 <dialogo-leitura></dialogo-leitura>
@@ -393,127 +388,55 @@ export class PainelProjeto extends HTMLElement {
         this._wireHistoricoPerimetro();
     }
 
+    /**
+     * Histórico de rodadas do perímetro: o <dialogo-historico-perimetro> mostra e
+     * avisa; aqui ficam o banco, o editor de pontos, a exportação e a recarga.
+     */
     _wireHistoricoPerimetro() {
-        const dialogo = this.querySelector(".dialogo-historico-perimetro");
-        const lista = this.querySelector(".lista-historico-perimetro");
+        const dialogo = this.querySelector("dialogo-historico-perimetro");
+
+        // Cada ação grava, atualiza a lista do diálogo e redesenha o projeto.
+        const aplicar = async acaoNoBanco => {
+            await acaoNoBanco();
+            await this._renderizarHistoricoPerimetro();
+            await this.recarregarTudo();
+        };
 
         this.querySelector('[data-acao="abrir-historico-perimetro"]').addEventListener("click", async () => {
             await this._renderizarHistoricoPerimetro();
-            dialogo.showModal();
+            dialogo.abrir();
         });
 
-        this.querySelector('[data-acao="fechar-historico-perimetro"]').addEventListener("click", () => dialogo.close());
+        dialogo.addEventListener("definir-principal", evento =>
+            aplicar(() => plantaTerraDB.definirTrilhaAtiva(this.projetoId, evento.detail.id)));
 
-        lista.addEventListener("click", async evento => {
-            const botao = evento.target.closest("button[data-acao]");
-            if (!botao) return;
+        dialogo.addEventListener("excluir-rodada", evento =>
+            aplicar(() => plantaTerraDB.removerTrilha(evento.detail.id)));
 
-            const id = botao.closest(".item-historico-perimetro").dataset.id;
+        dialogo.addEventListener("renomear-rodada", evento => aplicar(async () => {
+            const trilha = await plantaTerraDB.obterTrilha(evento.detail.id);
+            await plantaTerraDB.salvarTrilha({ ...trilha, nome: evento.detail.nome });
+        }));
 
-            if (botao.dataset.acao === "usar-rodada-perimetro") {
-                await plantaTerraDB.definirTrilhaAtiva(this.projetoId, id);
-                await this._renderizarHistoricoPerimetro();
-                await this.recarregarTudo();
-            } else if (botao.dataset.acao === "excluir-rodada-perimetro") {
-                if (!confirm("Excluir esta rodada de captura do perímetro? Essa ação não pode ser desfeita.")) return;
-                await plantaTerraDB.removerTrilha(id);
-                await this._renderizarHistoricoPerimetro();
-                await this.recarregarTudo();
-            } else if (botao.dataset.acao === "editar-pontos-perimetro") {
-                const trilha = await plantaTerraDB.obterTrilha(id);
-                dialogo.close();
-                this._abrirEditorPontosTrilha(trilha);
-            } else if (botao.dataset.acao === "exportar-kml-rodada") {
-                const trilha = await plantaTerraDB.obterTrilha(id);
-                exportarKMLTrilha(trilha, this.projeto.nome);
-            } else if (botao.dataset.acao === "renomear-rodada") {
-                this._editandoNomeTrilhaId = id;
-                await this._renderizarHistoricoPerimetro();
-            }
+        dialogo.addEventListener("visibilidade-alterada", evento => aplicar(async () => {
+            const trilha = await plantaTerraDB.obterTrilha(evento.detail.id);
+            await plantaTerraDB.salvarTrilha({ ...trilha, visivel: evento.detail.visivel });
+        }));
+
+        dialogo.addEventListener("editar-pontos", async evento => {
+            const trilha = await plantaTerraDB.obterTrilha(evento.detail.id);
+            dialogo.fechar();
+            this._abrirEditorPontosTrilha(trilha);
         });
 
-        lista.addEventListener("change", async evento => {
-            const checkbox = evento.target.closest('[data-acao="alternar-visivel-rodada"]');
-            if (!checkbox) return;
-
-            const id = checkbox.closest(".item-historico-perimetro").dataset.id;
-            const trilha = await plantaTerraDB.obterTrilha(id);
-            await plantaTerraDB.salvarTrilha({ ...trilha, visivel: checkbox.checked });
-            await this.recarregarTudo();
+        dialogo.addEventListener("exportar-kml", async evento => {
+            const trilha = await plantaTerraDB.obterTrilha(evento.detail.id);
+            exportarKMLTrilha(trilha, this.projeto.nome);
         });
     }
 
     async _renderizarHistoricoPerimetro() {
-        const lista = this.querySelector(".lista-historico-perimetro");
-        const trilhas = (await plantaTerraDB.listarTrilhas(this.projetoId))
-            .sort((a, b) => b.criado_em - a.criado_em);
-
-        if (trilhas.length === 0) {
-            lista.innerHTML = `<li class="lista-vazia">Nenhuma rodada capturada ainda.</li>`;
-            return;
-        }
-
-        lista.innerHTML = trilhas.map(trilha => {
-            const nome = trilha.nome || `Perímetro ${formatarData(trilha.criado_em)}`;
-            const visivel = trilha.visivel !== false;
-            const emEdicao = this._editandoNomeTrilhaId === trilha.id;
-
-            return `
-            <li class="item-historico-perimetro" data-id="${trilha.id}">
-                <span>
-                    ${emEdicao
-                        ? `<input type="text" class="input-nome-rodada" value="${escaparHtml(nome)}" maxlength="60" />`
-                        : `<strong>${escaparHtml(nome)}</strong>
-                           <button type="button" class="botao-icone-inline" data-acao="renomear-rodada" aria-label="Renomear">✏️</button>`
-                    }
-                    ${trilha.ativo ? " — principal" : ""}
-                    <br>
-                    ${trilha.poligono?.length >= 3 ? formatarArea(areaPoligonoMetros2(trilha.poligono)) : "polígono incompleto"}
-                    · ${formatarData(trilha.criado_em)}
-                    <label class="campo-checkbox">
-                        <input type="checkbox" data-acao="alternar-visivel-rodada" ${visivel ? "checked" : ""} />
-                        Visível no mapa
-                    </label>
-                </span>
-                <span class="acoes-item-historico">
-                    <button type="button" class="botao-secundario" data-acao="editar-pontos-perimetro">Editar pontos</button>
-                    ${trilha.poligono?.length >= 3
-                        ? `<button type="button" class="botao-secundario" data-acao="exportar-kml-rodada">Exportar KML</button>`
-                        : ""}
-                    ${trilha.ativo ? "" : `<button type="button" class="botao-secundario" data-acao="usar-rodada-perimetro">Definir como principal</button>`}
-                    <button type="button" class="botao-excluir" data-acao="excluir-rodada-perimetro" aria-label="Excluir">🗑</button>
-                </span>
-            </li>
-        `;
-        }).join("");
-
-        if (this._editandoNomeTrilhaId) {
-            const input = lista.querySelector(".input-nome-rodada");
-            if (input) {
-                input.focus();
-                input.select();
-
-                const commit = async () => {
-                    const id = this._editandoNomeTrilhaId;
-                    this._editandoNomeTrilhaId = null;
-                    const trilha = await plantaTerraDB.obterTrilha(id);
-                    await plantaTerraDB.salvarTrilha({ ...trilha, nome: input.value.trim() || null });
-                    await this._renderizarHistoricoPerimetro();
-                    await this.recarregarTudo();
-                };
-
-                input.addEventListener("blur", commit, { once: true });
-                input.addEventListener("keydown", evento => {
-                    if (evento.key === "Enter") {
-                        input.blur();
-                    } else if (evento.key === "Escape") {
-                        input.removeEventListener("blur", commit);
-                        this._editandoNomeTrilhaId = null;
-                        this._renderizarHistoricoPerimetro();
-                    }
-                });
-            }
-        }
+        this.querySelector("dialogo-historico-perimetro").rodadas = await plantaTerraDB.listarTrilhas(this.projetoId);
     }
 
     /**
