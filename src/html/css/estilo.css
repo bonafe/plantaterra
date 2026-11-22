@@ -1280,17 +1280,27 @@ dialog.dialogo-planta-metro[open] {
     text-overflow: ellipsis;
 }
 
-button.migalha {
+button.migalha,
+a.migalha {
     cursor: pointer;
     text-decoration: underline;
     text-decoration-color: var(--cor-borda);
 }
 
+.cabecalho-projeto h1.migalha-atual {
+    margin: 0;
+}
+
 .migalha-atual {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
+    display: block;
+    line-height: 40px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--cor-texto);
     font-weight: 700;
-    font-size: 1.05rem;
+    font-size: 1rem;
 }
 
 .migalha-separador {

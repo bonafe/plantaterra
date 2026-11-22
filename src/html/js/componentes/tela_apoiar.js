@@ -12,7 +12,10 @@ export class TelaApoiar extends HTMLElement {
             <div class="tela-apoiar">
                 <header class="cabecalho-app cabecalho-projeto">
                     <button type="button" class="botao-voltar" data-acao="voltar" aria-label="Voltar">←</button>
-                    <h1>Apoiar o PlantaTerra</h1>
+                    <nav class="migalhas" aria-label="Você está em">
+                        <a href="#/" class="migalha">PlantaTerra</a><span class="migalha-separador" aria-hidden="true">/</span>
+                        <h1 class="migalha migalha-atual" aria-current="page">Apoiar</h1>
+                    </nav>
                 </header>
 
                 <div class="painel-apoiar">
