@@ -1194,3 +1194,42 @@ campo-coordenada {
     font-size: 0.8rem;
     color: var(--cor-texto-suave);
 }
+
+/*
+ * Modo foco (tocou num metro): o mapa cresce, a matriz some e o painel de plantas
+ * (<dialogo-planta-metro>, não modal) ocupa o resto da tela, no fluxo — o mapa
+ * continua visível e usável com o rótulo "Linha X · metro N".
+ */
+dialogo-planta-metro {
+    display: contents;
+}
+
+painel-projeto.foco-metro .painel-inferior,
+painel-projeto.foco-metro .painel-inferior.painel-saf {
+    display: none;
+}
+
+painel-projeto.vista-saf-ativa.foco-metro .mapa-caixa {
+    flex: 0 0 44dvh;
+    min-height: 0;
+}
+
+dialog.dialogo-planta-metro[open] {
+    position: static;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+    margin: 0;
+    box-sizing: border-box;
+    overflow-y: auto;
+    border-radius: 0;
+    box-shadow: none;
+    border-top: 1px solid var(--cor-borda);
+}
+
+dialog.dialogo-planta-metro[open] .planta-metro-titulo {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+}

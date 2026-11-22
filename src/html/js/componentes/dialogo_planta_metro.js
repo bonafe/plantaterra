@@ -12,7 +12,9 @@ import { normalizarNome } from "../dominio/biblioteca_plantas.js";
  *
  * Entrada:
  *   especies = [{ id, nome_popular, nome_cientifico }]  sugestões da biblioteca (opcional)
- *   abrir({ titulo, plantas })   abre (ou, se já aberto, só atualiza título e lista)
+ *   abrir({ titulo, plantas })   abre (ou, se já aberto, só atualiza título e lista). NÃO é modal
+ *                                (show, não showModal): vira um painel no fluxo da tela e quem usa
+ *                                decide o layout — o painel do projeto deixa o mapa grande acima dele
  *   fechar()
  *   aberto                       leitura
  *
@@ -20,6 +22,7 @@ import { normalizarNome } from "../dominio/biblioteca_plantas.js";
  *   "planta-adicionada"  detail { especie, especieId|null, quantidade|null, observacao|null, dataPlantio|null }
  *                        especieId só vem preenchido se o nome digitado (sem caixa/acento) é de uma espécie da biblioteca
  *   "planta-removida"    detail { id }
+ *   "fechado"            o diálogo foi fechado (por qualquer meio)
  */
 export class DialogoPlantaMetro extends ReactiveComponent {
 
@@ -36,6 +39,8 @@ export class DialogoPlantaMetro extends ReactiveComponent {
         super.onLoad();
         this._dialogo = this.querySelector("dialog");
         this._formulario = this.querySelector("form");
+        // O evento nativo "close" não borbulha: reemite para quem usa o componente.
+        this._dialogo.addEventListener("close", () => this.dispatchEvent(new CustomEvent("fechado")));
     }
 
     get aberto() { return this._dialogo?.open ?? false; }
@@ -64,7 +69,7 @@ export class DialogoPlantaMetro extends ReactiveComponent {
         };
         if (!this._dialogo.open) {
             this._formulario.reset();
-            this._dialogo.showModal();
+            this._dialogo.show();
         }
     }
 

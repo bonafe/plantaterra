@@ -997,6 +997,13 @@ export class PainelProjeto extends HTMLElement {
 
             this.querySelector("matriz-saf").selecionar(`${linha.id}|${indiceMetro}`);
 
+            // Modo foco: o mapa cresce e o painel de plantas ocupa o resto (a matriz some até fechar),
+            // para a pessoa ver onde está o metro sem o painel cobrir o mapa.
+            if (!this.classList.contains("foco-metro")) {
+                this.classList.add("foco-metro");
+                this.mapaElemento.invalidarTamanho();
+            }
+
             // O mapa mostra onde fica este metro (rótulo + zoom de 1 m), para a pessoa se situar no campo.
             this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual, {
                 rotulo: `${prefixoSaf}${rotuloLinha} · metro ${indiceMetro}`,
@@ -1010,6 +1017,15 @@ export class PainelProjeto extends HTMLElement {
                 plantas: (this._plantasPorLinhaEmEdicao.get(linha.id) ?? []).filter(p => p.indice_metro === indiceMetro)
             });
         };
+
+        dialogo.addEventListener("fechado", () => {
+            this.classList.remove("foco-metro");
+            this.mapaElemento.invalidarTamanho();
+            // Se o GPS estava guiando, a matriz volta já na posição certa.
+            const andar = this.querySelector("andar-gps");
+            const maisProximo = this._ultimaAvaliacaoAndar?.maisProximo;
+            if (andar?.seguindo && maisProximo) this.querySelector("matriz-saf").rolarPara(maisProximo.chave);
+        });
 
         dialogo.addEventListener("planta-adicionada", async evento => {
             await plantaTerraDB.criarPlanta({

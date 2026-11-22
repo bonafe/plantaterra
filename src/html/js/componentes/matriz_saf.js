@@ -126,7 +126,7 @@ export class MatrizSaf extends HTMLElement {
 
     rolarPara(chave) {
         const celula = this._celulas?.get(chave);
-        if (!celula) return;
+        if (!celula || !this._wrapper.offsetParent) return; // escondida (ex: modo foco): sem medidas, não rola
         const c = celula.getBoundingClientRect();
         const w = this._wrapper.getBoundingClientRect();
         // O nome da fileira (esquerda) e o cabeçalho (topo) ficam fixos por cima: centraliza na área que sobra.
