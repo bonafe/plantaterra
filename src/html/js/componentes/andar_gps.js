@@ -38,11 +38,11 @@ export class AndarGps extends HTMLElement {
         this.hidden = true;
         this.classList.add("andar-faixa");
         this.innerHTML = `
-            <p class="andar-estado"></p>
-            <div class="andar-acoes">
-                <button type="button" class="botao-primario" data-acao="andar-voltar-seguir" hidden>🎯 Voltar a seguir</button>
-                <button type="button" class="botao-secundario" data-acao="andar-rumo">🧭 Girar com você</button>
+            <div class="andar-linha">
+                <p class="andar-estado"></p>
+                <button type="button" class="botao-secundario botao-andar-rumo" data-acao="andar-rumo" aria-label="Girar o mapa com você (frente para cima)">🧭</button>
             </div>
+            <button type="button" class="botao-primario botao-largo" data-acao="andar-voltar-seguir" hidden>🎯 Voltar a seguir</button>
             <p class="andar-status andar-rumo-status" hidden></p>
         `;
         this._textoEstado = this.querySelector(".andar-estado");
@@ -200,7 +200,7 @@ export class AndarGps extends HTMLElement {
         rumo.captador?.parar();
         this._estado.rumo = null;
         this.dispatchEvent(new CustomEvent("rumo-ativo", { detail: { ativo: false } }));
-        this._botaoRumo.textContent = "🧭 Girar com você";
+        this._botaoRumo.classList.remove("botao-andar-rumo-ligado");
         this._textoRumo.hidden = true;
     }
 
@@ -214,7 +214,7 @@ export class AndarGps extends HTMLElement {
         const rumo = { ativo: true, captador: new CaptadorRumo(), temBussola: false, suave: null, aplicado: null, ultimaAplicacao: 0 };
         this._estado.rumo = rumo;
         this.dispatchEvent(new CustomEvent("rumo-ativo", { detail: { ativo: true } }));
-        this._botaoRumo.textContent = "🧭 Norte para cima";
+        this._botaoRumo.classList.add("botao-andar-rumo-ligado");
         this._textoRumo.hidden = false;
         this._textoRumo.textContent = "Procurando a bússola do aparelho…";
 
@@ -223,9 +223,9 @@ export class AndarGps extends HTMLElement {
         rumo.temBussola = await rumo.captador.iniciar();
 
         if (this._estado?.rumo !== rumo) return; // a pessoa desligou enquanto esperava
-        this._textoRumo.textContent = rumo.temBussola
-            ? "O mapa gira com a bússola do aparelho: a frente é para cima."
-            : "Sem bússola neste aparelho (ou sem permissão): o mapa gira conforme você anda, pela direção do GPS. Ande reto por alguns passos para orientar.";
+        // Com bússola funcionando não há o que explicar (o botão aceso já diz); só avisa quando falta.
+        this._textoRumo.hidden = rumo.temBussola;
+        this._textoRumo.textContent = "Sem bússola (ou sem permissão): o mapa gira pela direção do GPS — ande reto alguns passos.";
     }
 }
 

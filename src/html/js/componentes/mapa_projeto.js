@@ -371,17 +371,21 @@ export class MapaProjeto extends HTMLElement {
 
     /**
      * Destaca o metro específico que está sendo editado (célula clicada na
-     * matriz) com um marcador diferenciado, e centraliza o mapa nele — sem
-     * mudar o zoom, para manter a noção de onde ele fica dentro da linha.
+     * matriz) com um marcador diferenciado e o rótulo "Linha X · metro N", e
+     * centraliza o mapa nele. Com `zoomMinimo` aproxima se estiver mais afastado
+     * (nunca afasta): um metro tem ~15 px no zoom 21, o suficiente para ver
+     * exatamente onde ele fica na linha.
      */
-    destacarSegmentoAtivo(coordenada) {
+    destacarSegmentoAtivo(coordenada, { rotulo = null, zoomMinimo = null } = {}) {
         this.camadaSegmentoAtivo.clear();
 
         const centro = paraMapa(coordenada.lat, coordenada.lon);
         this._adicionar(this.camadaSegmentoAtivo, new ol.geom.Point(centro),
-            estiloCirculo({ raio: 11, cor: "#f6e05e", largura: 3, corPreenchimento: "#f6e05e", opacidadePreenchimento: 0.5 }));
+            estiloCirculo({ raio: 11, cor: "#b7791f", largura: 3, corPreenchimento: "#f6e05e", opacidadePreenchimento: 0.7, texto: rotulo }));
 
-        this.visao.animate({ center: centro, duration: 200 });
+        const zoomAtual = this.visao.getZoom();
+        const zoom = zoomMinimo === null ? zoomAtual : Math.max(zoomAtual, zoomMinimo);
+        this.visao.animate({ center: centro, zoom, duration: 250 });
     }
 
     // ---- Modo "Andar na agrofloresta" (docs/especificacao.md secao 14.9) ----

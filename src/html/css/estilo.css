@@ -332,8 +332,8 @@ mapa-projeto.mapa {
 
 /* Vista SAF: o mapa é só uma janela de conferência; a matriz de fileiras é a protagonista. */
 painel-projeto.vista-saf-ativa .mapa-caixa {
-    flex: 0 0 26dvh;
-    min-height: 0;
+    flex: 0 0 24dvh;
+    min-height: 150px;
 }
 
 painel-projeto.vista-saf-ativa.mapa-ampliado .mapa-caixa {
@@ -387,15 +387,30 @@ painel-projeto.vista-saf-ativa.mapa-ampliado .mapa-caixa {
     display: none;
 }
 
+/* Na vista SAF só a matriz encolhe/rola; o resto mantém a altura — senão, em
+   telas baixas (celular), o seletor de SAF e a faixa do GPS ficavam espremidos
+   por baixo do componente seguinte. */
+.painel-inferior .vista-saf > .secao-cabecalho,
+.saf-modos,
+.saf-seletor,
+.vista-saf > andar-gps,
+.vista-saf > .editor-saf-info {
+    flex: 0 0 auto;
+}
+
+.painel-inferior .vista-saf > .secao-cabecalho {
+    margin-bottom: 4px;
+}
+
 .saf-modos {
     display: flex;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .saf-modo {
     flex: 1;
-    min-height: 44px;
+    min-height: 40px;
     border: 2px solid var(--cor-borda);
     border-radius: var(--raio);
     background: var(--cor-secundaria);
@@ -414,7 +429,12 @@ painel-projeto.vista-saf-ativa.mapa-ampliado .mapa-caixa {
     display: flex;
     gap: 6px;
     overflow-x: auto;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    scrollbar-width: none;
+}
+
+.saf-seletor::-webkit-scrollbar {
+    display: none;
 }
 
 .saf-chip {
@@ -436,8 +456,8 @@ painel-projeto.vista-saf-ativa.mapa-ampliado .mapa-caixa {
 }
 
 .andar-faixa {
-    padding: 8px 10px;
-    margin-bottom: 8px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
     border-radius: var(--raio);
     background: rgba(49, 130, 206, 0.15);
     border: 1px solid #3182ce;
@@ -448,9 +468,42 @@ painel-projeto.vista-saf-ativa.mapa-ampliado .mapa-caixa {
     border-color: #ecc94b;
 }
 
+.andar-linha {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.andar-linha .andar-estado {
+    flex: 1;
+}
+
+.botao-andar-rumo {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    font-size: 1.3rem;
+}
+
+.botao-andar-rumo-ligado {
+    background: #3182ce;
+    border-color: #2b6cb0;
+    color: #fff;
+}
+
+andar-gps .botao-largo {
+    margin-top: 6px;
+}
+
+andar-gps .andar-rumo-status {
+    margin: 6px 0 0;
+    font-size: 0.8rem;
+}
+
 .andar-estado {
-    margin: 0 0 6px;
-    font-size: 0.9rem;
+    margin: 0;
+    font-size: 0.85rem;
 }
 
 matriz-saf {
@@ -600,7 +653,7 @@ andar-gps[hidden] {
 .editor-saf-info {
     color: var(--cor-texto-suave);
     font-size: 0.9rem;
-    margin: 0 0 12px 0;
+    margin: 0 0 6px 0;
 }
 
 .matriz-saf-wrapper {

@@ -137,13 +137,7 @@ export class PainelProjeto extends HTMLElement {
                     </div>
 
                     <section class="vista-saf" hidden>
-                        <div class="secao-cabecalho">
-                            <h2>Sistemas Agroflorestais (SAF)</h2>
-                            <label class="botao-secundario botao-arquivo">
-                                Importar KMZ/KML
-                                <input type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" data-acao="importar-arquivo-saf" hidden />
-                            </label>
-                        </div>
+                        <input type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" data-acao="importar-arquivo-saf" hidden />
                         <div class="saf-modos" role="tablist">
                             <button type="button" class="saf-modo saf-modo-ativo" data-modo="atual">Atual</button>
                             <button type="button" class="saf-modo" data-modo="andar">📍 Andar</button>
@@ -830,7 +824,7 @@ export class PainelProjeto extends HTMLElement {
         const atual = this._dadosSaf.find(d => d.saf.id === this._safAtualId);
         if (!atual) {
             seletor.innerHTML = "";
-            info.textContent = "Nenhum SAF com linhas de plantio ainda. Use \"Importar KMZ/KML\" acima.";
+            info.textContent = "Nenhum SAF com linhas de plantio ainda. Use o menu ⋮ → Importar → KMZ/KML.";
             matrizElemento.limpar();
             this.mapaElemento.limparLinhasDestacadas();
             return;
@@ -910,7 +904,7 @@ export class PainelProjeto extends HTMLElement {
             this._ultimaAvaliacaoAndar = { proximos, maisProximo };
             this.mapaElemento.definirPosicaoUsuario(posicao);
             // Zoom de aproximação só no primeiro sinal; depois vale o zoom da pessoa.
-            if (centralizar) this.mapaElemento.seguirPosicao(posicao.lat, posicao.lon, primeiroSinal ? 20 : null);
+            if (centralizar) this.mapaElemento.seguirPosicao(posicao.lat, posicao.lon, primeiroSinal ? 21 : null);
 
             if (atuando) this._escolherSaf(maisProximo.safId, { ajustarZoom: false });
             this._aplicarMarcasAndar();
@@ -995,12 +989,17 @@ export class PainelProjeto extends HTMLElement {
             this._linhaAtualParaPlanta = linha;
             this._metroEmEdicao = indiceMetro;
             if (coordenada) this._coordenadaMetroAtual = coordenada;
-            this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual);
 
             const rotuloLinha = linha.numero_linha !== null ? `Linha ${linha.numero_linha}` : linha.nome_original;
             // Com mais de um SAF no projeto, "Linha 1" sozinho é ambíguo.
             const safDaLinha = this.safsComLinhas.find(({ saf }) => saf.id === linha.saf_id)?.saf;
             const prefixoSaf = this.safsComLinhas.length > 1 && safDaLinha ? `${safDaLinha.nome} · ` : "";
+
+            // O mapa mostra onde fica este metro (rótulo + zoom de 1 m), para a pessoa se situar no campo.
+            this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual, {
+                rotulo: `${prefixoSaf}${rotuloLinha} · metro ${indiceMetro}`,
+                zoomMinimo: 21
+            });
 
             // A biblioteca é global e pode ter mudado em outra tela: relê a cada abertura.
             if (!dialogo.aberto) dialogo.especies = await plantaTerraDB.listarEspecies();
