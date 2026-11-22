@@ -992,3 +992,18 @@ mapa-projeto.rotacao-automatica .ol-rotate {
     white-space: nowrap;
     pointer-events: none;
 }
+
+/* QR code do endereço do app */
+.dialogo-qr .qr-imagem {
+    display: flex;
+    justify-content: center;
+    padding: 12px;
+    background: #fff;
+    border-radius: var(--raio);
+}
+
+.dialogo-qr .qr-url {
+    word-break: break-all;
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+}

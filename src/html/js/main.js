@@ -14,8 +14,32 @@ const app = document.querySelector("#app");
 document.querySelector(".rodape-versao").innerHTML = `
     <a href="#/apoiar">❤️ Apoiar</a>
     · <a href="${urlFeedbackWhatsApp()}" target="_blank" rel="noopener">💬 Relatar</a>
+    · <a href="#" data-acao="mostrar-qr">📱 QR</a>
     · PlantaTerra v${VERSAO_APP}
 `;
+
+// QR code do endereço do app, para abrir no celular sem digitar a URL.
+document.querySelector('[data-acao="mostrar-qr"]').addEventListener("click", evento => {
+    evento.preventDefault();
+    const url = location.origin + location.pathname;
+    const dialogo = document.createElement("dialog");
+    dialogo.className = "dialogo-qr";
+    dialogo.innerHTML = `
+        <h2>Abrir no celular</h2>
+        <p class="ajuda-campo">Aponte a câmera do celular para o código.</p>
+        <div class="qr-imagem"></div>
+        <p class="qr-url"></p>
+        <p class="ajuda-campo qr-aviso" hidden>Este endereço é do próprio computador (localhost): o celular não vai conseguir abri-lo. Abra o app pelo IP da rede (ex: http://192.168.x.x:8080/src/html/).</p>
+        <div class="acoes-formulario"><button type="button" data-acao="fechar-qr">Fechar</button></div>
+    `;
+    dialogo.querySelector(".qr-url").textContent = url;
+    dialogo.querySelector(".qr-aviso").hidden = !/^(localhost|127\.|\[::1\])/.test(location.hostname);
+    new QRCode(dialogo.querySelector(".qr-imagem"), { text: url, width: 220, height: 220 });
+    dialogo.querySelector('[data-acao="fechar-qr"]').addEventListener("click", () => dialogo.close());
+    dialogo.addEventListener("close", () => dialogo.remove());
+    document.body.appendChild(dialogo);
+    dialogo.showModal();
+});
 
 // Problemas de versão do banco entre abas: sem aviso, o app só pareceria vazio.
 function mostrarAvisoBanco(mensagem, textoBotao, aoClicar) {
