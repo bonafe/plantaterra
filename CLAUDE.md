@@ -46,7 +46,7 @@ Não há linter, testes automatizados ou framework de build. Verificação de si
 - `src/html/js/dominio/` — regras de negócio que não são geometria pura: `nivelamento.js` (cálculo de altitude relativa), `saf.js` (parsing de nome de linha de plantio).
 - `src/html/css/estilo.css` — único arquivo de CSS, sem pré-processador.
 - `docs/especificacao.md` — a spec viva do domínio. **Ao mudar comportamento coberto por uma seção, atualize a seção junto no mesmo commit.**
-- `vendor/` — bibliotecas de terceiros vendorizadas (OpenLayers, fflate para zip/KMZ, qrcode para o painel de apoio) — nunca CDN, o app precisa abrir offline em campo.
+- `vendor/` — bibliotecas de terceiros vendorizadas (UltimaJS — `vendor/ultima/`, núcleo de componentes reativos, ver `docs/especificacao.md` §14.12 —, OpenLayers, fflate para zip/KMZ, qrcode para o painel de apoio) — nunca CDN, o app precisa abrir offline em campo.
 - `index.html` (raiz) — landing page institucional, fora de `src/html/` (§11.3). Reaproveita módulos do app por caminho relativo (`js/apoio_pix.js`, `js/feedback_whatsapp.js`, `js/consentimento_analytics.js`) em vez de duplicar lógica — não entra no precache do service worker (escopo dele é só `src/html/`).
 
 ## Convenções

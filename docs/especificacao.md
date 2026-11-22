@@ -438,6 +438,17 @@ A vista SAF é composta por componentes independentes, ligados pelo `painel_proj
 - **Estações e leituras (§4):** `<dialogo-estacao>` (`abrir({estacoesParaAmarrar})`, evento `estacao-criada {nome, coordenada, alturaInstrumento, amarradaAEstacaoId}`), `<dialogo-leitura>` (`abrir()`, evento `leitura-criada {coordenada, alturaMira, ehPontoAmarracao}`), `<lista-estacoes>` (`estacoes = [{estacao, leituras}]`, evento `nova-leitura-solicitada {estacaoId}`) e o auxiliar `<campo-coordenada>` (linha "status + Capturar posição GPS"; recebe uma função `capturador` — o painel passa `<captura-gps>.abrir()` — e emite `coordenada-capturada`). Gravar a estação/leitura, resolver a amarração e recalcular altitudes (`painel_projeto.js#_salvarNovaLeitura`, regra do §4) continua no painel.
 - Quem orquestra (`painel_projeto.js#_wireVistaSaf`) traduz eventos em ações no mapa, na matriz e na escolha do SAF.
 
+### 14.12 Migração para o UltimaJS (etapa 2, em andamento)
+
+O núcleo do UltimaJS (`component_base.js`, `reactive_component.js`, `controller_base.js`) está vendorizado em `src/html/vendor/ultima/` (cópia; mudanças vão para o repositório `ultima`). Os componentes do §14.11 estão sendo trocados, um a um, de `HTMLElement` puro para `ReactiveComponent`, **sem mudar o contrato** (propriedades/métodos de entrada e eventos de saída).
+
+- **Migrados:** `<campo-coordenada>` (piloto).
+- **Como migrar um componente:** o HTML vai para um arquivo `.html` ao lado do `.js` (template com `{{ caminho }}`, `data-on`, `data-bind`, `data-if`, `data-for`); a classe estende `ReactiveComponent` com `super({ templateUrl, shadowDom: false }, import.meta.url)`; o estado reativo fica em `this.state`.
+- **`shadowDom: false` sempre** — Shadow DOM isolaria o componente do `css/estilo.css` único do app.
+- **O template carrega de forma assíncrona** (`fetch`): o `.html` precisa estar em `ARQUIVOS_DO_APP` do `sw.js` (senão quebra offline), e o componente só renderiza quando `loaded`. Estado definido antes do carregamento fica guardado e é aplicado depois — por isso os métodos de entrada (`limpar()`, etc.) podem ser chamados logo após a criação.
+- **Não definir estado no construtor** (`createElement` não admite atributos ali, e o estado é espelhado no atributo `data-state`): inicialize em `connectedCallback`.
+- O estado vira JSON no atributo `data-state` do elemento: não guardar nele objetos grandes nem funções (ex.: o `capturador` continua propriedade comum).
+
 ## 15. Roadmap de fases futuras (fora de escopo desta implementação)
 
 Estas fases reaproveitam `planta_linha` como núcleo, então são descritas aqui para guiar decisões de modelo de dados desde já (evitar retrabalho), mas **não fazem parte da implementação atual**:
