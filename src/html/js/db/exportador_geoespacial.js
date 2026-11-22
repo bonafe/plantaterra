@@ -182,6 +182,7 @@ function construirGeoJSON({ projeto, poligono, estacoesComLeituras, isolinhas, s
                         plantas: plantas.map(p => ({
                             especie: p.especie,
                             quantidade: p.quantidade,
+                            sementes: p.sementes ?? null,
                             observacao: p.observacao,
                             data_plantio: p.data_plantio
                         }))
@@ -282,7 +283,7 @@ function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas, safsC
 
             for (const { indiceMetro, coordenada, plantas } of pontosPlantados) {
                 const listaPlantas = plantas
-                    .map(p => escaparXml(`${p.especie}${p.quantidade ? ` (x${p.quantidade})` : ""}${p.observacao ? ` — ${p.observacao}` : ""}`))
+                    .map(p => escaparXml(`${p.especie}${p.quantidade ? ` (x${p.quantidade})` : ""}${p.sementes ? ` (${p.sementes} sementes)` : ""}${p.observacao ? ` — ${p.observacao}` : ""}`))
                     .join("<br/>");
 
                 partes.push(`

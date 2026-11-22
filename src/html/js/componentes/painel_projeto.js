@@ -14,7 +14,7 @@ import { calcularCascoConvexo } from "../geo/casco_convexo.js";
 import { areaPoligonoMetros2 } from "../geo/geodesia.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
-import { agruparPlantasPorMetro } from "../dominio/saf.js";
+import { agruparPlantasPorMetro, aplicarDadosNaPlanta } from "../dominio/saf.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
 import { escaparHtml, formatarArea, formatarData } from "./util_dom.js";
 import "./mapa_projeto.js";
@@ -1105,6 +1105,16 @@ export class PainelProjeto extends HTMLElement {
                 indiceMetro: this._metroEmEdicao,
                 ...evento.detail
             });
+            await this._recarregarAposMudarPlantas();
+            this._abrirDialogoMetro(this._linhaAtualParaPlanta, this._metroEmEdicao);
+        });
+
+        // Edição de uma planta já adicionada, ou "atualizar a existente" ao repetir a espécie no metro.
+        dialogo.addEventListener("planta-atualizada", async evento => {
+            const { id, parcial, ...dados } = evento.detail;
+            const existente = (this._plantasPorLinhaEmEdicao.get(this._linhaAtualParaPlanta.id) ?? []).find(p => p.id === id);
+            if (!existente) return;
+            await plantaTerraDB.atualizarPlanta(aplicarDadosNaPlanta(existente, dados, { parcial }));
             await this._recarregarAposMudarPlantas();
             this._abrirDialogoMetro(this._linhaAtualParaPlanta, this._metroEmEdicao);
         });

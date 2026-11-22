@@ -303,7 +303,7 @@ class PlantaTerraDB extends DBBase {
 
     // ---- planta_linha ----
 
-    async criarPlanta({ linhaId, indiceMetro, especie, especieId = null, quantidade = null, observacao = null, dataPlantio = null }) {
+    async criarPlanta({ linhaId, indiceMetro, especie, especieId = null, quantidade = null, sementes = null, observacao = null, dataPlantio = null }) {
         const planta = {
             id: this.gerarId(),
             linha_id: linhaId,
@@ -311,10 +311,16 @@ class PlantaTerraDB extends DBBase {
             especie,
             especie_id: especieId,
             quantidade,
+            sementes,
             observacao,
             data_plantio: dataPlantio,
             criado_em: Date.now()
         };
+        await this.salvar("planta_linha", planta);
+        return planta;
+    }
+
+    async atualizarPlanta(planta) {
         await this.salvar("planta_linha", planta);
         return planta;
     }

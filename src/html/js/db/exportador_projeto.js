@@ -1,7 +1,7 @@
 import { plantaTerraDB } from "./plantaterra_db.js";
 import { baixarArquivo, slug } from "./util_arquivo.js";
 import { serializarEspecies, mesclarEspecies, importarBiblioteca } from "./exportador_biblioteca.js";
-import { normalizarNome } from "../dominio/biblioteca_plantas.js";
+import { chaveEspecie, normalizarNome } from "../dominio/biblioteca_plantas.js";
 
 // Reexportados porque outros módulos (exportador_geoespacial) importam daqui.
 export { baixarArquivo, slug };
@@ -29,11 +29,18 @@ async function coletarProjeto(projetoId) {
         throw new Error("Projeto não encontrado.");
     }
 
+    const especiesPorId = new Map((await plantaTerraDB.listarEspecies()).map(e => [e.id, e]));
+
     const safs = await Promise.all(safsComLinhas.map(async ({ saf, linhas }) => ({
         saf,
         linhas: await Promise.all(linhas.map(async linha => ({
             linha,
-            plantas: await plantaTerraDB.listarPlantasDaLinha(linha.id)
+            // `especie_nome_cientifico` acompanha o vínculo: o mesmo nome popular pode ser de espécies
+            // diferentes, então ao restaurar a planta se religa pela dupla popular + científico.
+            plantas: (await plantaTerraDB.listarPlantasDaLinha(linha.id)).map(planta => ({
+                ...planta,
+                especie_nome_cientifico: especiesPorId.get(planta.especie_id)?.nome_cientifico ?? null
+            }))
         })))
     })));
 
@@ -127,7 +134,12 @@ export async function importarArquivo(arquivoOuTexto) {
     const resumoBiblioteca = especiesDoPacote ? await mesclarEspecies(especiesDoPacote) : null;
 
     const especiesLocais = await plantaTerraDB.listarEspecies();
-    const especiePorNome = new Map(especiesLocais.map(e => [normalizarNome(e.nome_popular), e.id]));
+    const especiePorChave = new Map(especiesLocais.map(e => [chaveEspecie(e.nome_popular, e.nome_cientifico), e.id]));
+    const especiesPorNome = new Map();
+    for (const e of especiesLocais) {
+        const chave = normalizarNome(e.nome_popular);
+        especiesPorNome.set(chave, [...(especiesPorNome.get(chave) ?? []), e.id]);
+    }
 
     const nomesEmUso = new Set((await plantaTerraDB.listarProjetos()).map(p => p.nome));
 
@@ -186,9 +198,17 @@ async function importarEntradaDeProjeto(entrada, especiePorNome, nomesEmUso) {
             for (const planta of plantas ?? []) {
                 // O vínculo com a biblioteca é refeito pelo nome: o id da espécie
                 // neste aparelho não é o mesmo do aparelho de origem.
-                const especieId = planta.especie_id ? (especiePorNome.get(normalizarNome(planta.especie)) ?? null) : null;
+                // Primeiro pela dupla popular + científico; backups antigos (sem o científico) só se religam
+                // pelo nome quando ele identifica uma espécie só.
+                let especieId = null;
+                if (planta.especie_id) {
+                    const candidatas = especiesPorNome.get(normalizarNome(planta.especie)) ?? [];
+                    especieId = especiePorChave.get(chaveEspecie(planta.especie, planta.especie_nome_cientifico))
+                        ?? (candidatas.length === 1 ? candidatas[0] : null);
+                }
+                const { especie_nome_cientifico, ...plantaSemAuxiliar } = planta;
                 await plantaTerraDB.salvar("planta_linha", {
-                    ...planta,
+                    ...plantaSemAuxiliar,
                     id: novoId(planta.id),
                     linha_id: linhaNova.id,
                     especie_id: especieId

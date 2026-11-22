@@ -723,9 +723,10 @@ andar-gps[hidden] {
     border-bottom: 3px solid #b7791f;
 }
 
+/* Contorno com box-shadow, não outline: o outline é pintado por cima de tudo (inclusive do cabeçalho
+   e dos nomes das fileiras, que são sticky) e vazava para cima deles ao rolar a matriz. */
 .quadrado-metro-selecionado {
-    outline: 3px solid #b7791f;
-    outline-offset: 1px;
+    box-shadow: 0 0 0 3px #b7791f;
 }
 
 .quadrado-metro {
@@ -753,15 +754,6 @@ andar-gps[hidden] {
     font-size: 0.8rem;
 }
 
-.item-planta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 0;
-    border-bottom: 1px dashed var(--cor-borda);
-    font-size: 0.9rem;
-}
 
 .item-historico-perimetro {
     display: flex;
@@ -1003,44 +995,19 @@ dialog select {
     width: 100%;
 }
 
+.busca-biblioteca-caixa {
+    margin-bottom: 12px;
+}
+
 .busca-biblioteca {
     display: block;
     width: 100%;
     min-height: 44px;
-    margin-bottom: 12px;
+    margin-bottom: 0;
     padding: 10px;
     border: 1px solid var(--cor-borda);
     border-radius: 6px;
     font: inherit;
-}
-
-.lista-especies {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-.item-especie {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    border: 1px solid var(--cor-borda);
-    border-radius: var(--raio);
-    margin-bottom: 8px;
-    padding: 4px 8px;
-}
-
-.item-especie-texto {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: 8px;
-    min-width: 0;
-}
-
-.item-especie .botao-excluir {
-    min-width: 44px;
-    min-height: 44px;
 }
 
 .backup-cabecalho-projetos {
@@ -1298,4 +1265,288 @@ a.migalha {
 
 .migalha-separador {
     color: var(--cor-texto-suave);
+}
+
+/*
+ * <card-planta> (card_planta.js): planta/espécie com foto, nome, científico, detalhes e ações.
+ * Container query: adapta-se à largura do próprio card, então serve igual numa coluna estreita de
+ * celular e numa coluna larga de tela grande. As listas de cards viram grade de várias colunas.
+ */
+card-planta {
+    display: block;
+    container: card-planta / inline-size;
+}
+
+.lista-plantas-metro,
+.lista-especies {
+    list-style: none;
+    margin: 0 0 8px 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+    gap: 8px;
+}
+
+.lista-plantas-metro .lista-vazia,
+.lista-especies .lista-vazia {
+    grid-column: 1 / -1;
+}
+
+.item-card {
+    list-style: none;
+    min-width: 0;
+}
+
+.item-card > card-planta {
+    height: 100%;
+}
+
+.card-planta-conteudo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 8px;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    background: var(--cor-fundo-pagina);
+}
+
+.card-planta-foto {
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 8px;
+    background: rgba(56, 161, 105, 0.15);
+    font-size: 1.6rem;
+}
+
+.card-planta-foto img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.card-planta-corpo {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.card-planta-nome {
+    font-size: 1rem;
+}
+
+.card-planta-cientifico,
+.card-planta-linha {
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+}
+
+.card-planta-linha:first-of-type {
+    color: var(--cor-texto);
+}
+
+.card-planta-acoes {
+    flex: 0 0 auto;
+    display: flex;
+}
+
+.card-planta-acoes .botao-excluir {
+    min-width: 44px;
+    min-height: 44px;
+}
+
+@container card-planta (min-width: 300px) {
+    .card-planta-foto {
+        flex-basis: 56px;
+        width: 56px;
+        height: 56px;
+    }
+}
+
+@container card-planta (min-width: 460px) {
+    .card-planta-conteudo {
+        gap: 14px;
+        padding: 12px;
+    }
+
+    .card-planta-foto {
+        flex-basis: 88px;
+        width: 88px;
+        height: 88px;
+        font-size: 2.4rem;
+    }
+
+    .card-planta-nome {
+        font-size: 1.15rem;
+    }
+
+    .card-planta-cientifico,
+    .card-planta-linha {
+        font-size: 0.95rem;
+    }
+}
+
+@container card-planta (min-width: 640px) {
+    .card-planta-foto {
+        flex-basis: 120px;
+        width: 120px;
+        height: 120px;
+        font-size: 3rem;
+    }
+
+    .card-planta-acoes {
+        flex-direction: column;
+    }
+}
+
+/* Autocomplete da espécie (biblioteca) */
+.campo-especie {
+    position: relative;
+}
+
+.opcoes-especie {
+    list-style: none;
+    margin: 4px 0 0 0;
+    padding: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    background: #fff;
+}
+
+.opcoes-especie[hidden] {
+    display: none;
+}
+
+.opcao-especie {
+    width: 100%;
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 4px 12px;
+    border: none;
+    border-bottom: 1px solid var(--cor-borda);
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.opcao-especie em {
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+}
+
+/* <campo-limpavel> (campo_limpavel.js): botão "Limpar" dentro do campo de texto, visível só com texto. */
+campo-limpavel {
+    display: block;
+    position: relative;
+}
+
+campo-limpavel input {
+    width: 100%;
+    box-sizing: border-box;
+    padding-right: 84px;
+}
+
+campo-limpavel input[type="search"]::-webkit-search-cancel-button {
+    display: none;
+}
+
+.campo-limpavel-botao {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    bottom: 2px;
+    min-width: 44px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--cor-primaria-escura);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.campo-limpavel-botao[hidden] {
+    display: none;
+}
+
+/* Card clicável (abre o detalhe) e diálogo de detalhe da espécie */
+.card-planta-conteudo[role="button"] {
+    cursor: pointer;
+}
+
+.card-planta-conteudo[role="button"]:active {
+    background: rgba(56, 161, 105, 0.12);
+}
+
+.card-planta-conteudo[role="button"]:focus-visible {
+    outline: 3px solid var(--cor-primaria);
+    outline-offset: 2px;
+}
+
+.dialogo-detalhe-especie .detalhe-nome {
+    margin: 0;
+}
+
+.dialogo-detalhe-especie .detalhe-cientifico {
+    margin: 2px 0 12px;
+    color: var(--cor-texto-suave);
+}
+
+.detalhe-lista {
+    margin: 0 0 12px;
+}
+
+.detalhe-lista dt {
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+}
+
+.detalhe-lista dd {
+    margin: 0 0 8px;
+    overflow-wrap: anywhere;
+}
+
+.formulario-planta-titulo {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.aviso-conflito-planta {
+    margin: 8px 0;
+    padding: 10px;
+    border: 2px solid #b7791f;
+    border-radius: var(--raio);
+    background: #fffaf0;
+}
+
+.aviso-conflito-planta[hidden] {
+    display: none;
+}
+
+.aviso-conflito-planta p {
+    margin: 0 0 8px;
+}
+
+/* Trecho encontrado na busca (biblioteca e autocomplete de espécie) */
+.destaque-busca {
+    background: #fefcbf;
+    color: inherit;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px #fefcbf;
 }

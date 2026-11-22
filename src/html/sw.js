@@ -1,6 +1,6 @@
 // Mantenha sincronizado com VERSAO_APP em js/versao.js (rodapé do app) —
 // bump os dois juntos a cada release, ver docs/especificacao.md secao 10.
-const VERSAO_APP = "49";
+const VERSAO_APP = "60";
 const VERSAO_CACHE = `plantaterra-v${VERSAO_APP}`;
 const CACHE_TILES = "plantaterra-tiles-v1";
 
@@ -14,6 +14,8 @@ const ARQUIVOS_DO_APP = [
     "./js/componentes/captura_gps.js",
     "./js/componentes/matriz_saf.js",
     "./js/componentes/andar_gps.js",
+    "./js/componentes/card_planta.js",
+    "./js/componentes/campo_limpavel.js",
     "./js/componentes/dialogo_planta_metro.js",
     "./js/componentes/dialogo_planta_metro.html",
     "./js/componentes/editor_pontos_trilha.js",
@@ -76,7 +78,10 @@ const ARQUIVOS_DO_APP = [
 self.addEventListener("install", evento => {
     evento.waitUntil(
         caches.open(VERSAO_CACHE)
-            .then(cache => cache.addAll(ARQUIVOS_DO_APP))
+            // cache: "reload" ignora o cache HTTP do navegador: sem isso (cache.addAll), uma versão nova do
+            // app podia ser instalada com cópias VELHAS de alguns arquivos (ex: um módulo sem o export novo
+            // → tela em branco). Hospedagens como o GitHub Pages mandam max-age, então isso vale em produção.
+            .then(cache => Promise.all(ARQUIVOS_DO_APP.map(arquivo => cache.add(new Request(arquivo, { cache: "reload" })))))
             .then(() => self.skipWaiting())
     );
 });

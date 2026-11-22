@@ -16,6 +16,49 @@ export function normalizarNome(texto) {
         .trim();
 }
 
+/**
+ * Identidade de uma espécie na biblioteca: nome popular + nome científico. O mesmo nome popular pode ser de
+ * espécies diferentes (ex.: dois "ingá"), então só é duplicada a que repete os DOIS.
+ */
+export function chaveEspecie(nomePopular, nomeCientifico) {
+    return `${normalizarNome(nomePopular)}|${normalizarNome(nomeCientifico)}`;
+}
+
+/**
+ * Parte `texto` em trechos [{ t, m }] marcando (m = true) onde aparece `consulta`, sem diferenciar caixa nem
+ * acento — para destacar o que a pessoa procurou. Sem consulta (ou sem ocorrência) devolve um trecho só.
+ */
+export function segmentarDestaque(texto, consulta) {
+    texto = String(texto ?? "");
+    const alvo = normalizarNome(consulta);
+    if (!alvo) return [{ t: texto, m: false }];
+
+    // Texto normalizado caractere a caractere, guardando de qual posição original veio cada um.
+    let normalizado = "";
+    const origem = [];
+    [...texto].forEach((caractere, i) => {
+        const n = caractere.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+        for (const c of n) { normalizado += c; origem.push(i); }
+    });
+    const caracteres = [...texto];
+
+    const trechos = [];
+    let cursor = 0;
+    let achado = normalizado.indexOf(alvo);
+    while (achado !== -1) {
+        const inicio = origem[achado];
+        const fim = origem[achado + alvo.length - 1] + 1;
+        if (inicio >= cursor) {
+            if (inicio > cursor) trechos.push({ t: caracteres.slice(cursor, inicio).join(""), m: false });
+            trechos.push({ t: caracteres.slice(inicio, fim).join(""), m: true });
+            cursor = fim;
+        }
+        achado = normalizado.indexOf(alvo, achado + alvo.length);
+    }
+    if (cursor < caracteres.length) trechos.push({ t: caracteres.slice(cursor).join(""), m: false });
+    return trechos.length ? trechos : [{ t: texto, m: false }];
+}
+
 function textoOuNulo(valor, tamanhoMaximo) {
     if (typeof valor !== "string") return null;
     const limpo = valor.trim().slice(0, tamanhoMaximo);

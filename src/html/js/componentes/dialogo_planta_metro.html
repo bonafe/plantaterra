@@ -4,25 +4,35 @@
             <li class="lista-vazia">Nenhuma planta cadastrada neste metro ainda.</li>
         </template>
         <template data-for="p in plantas : id">
-            <li class="item-planta">
-                <span>
-                    <strong>{{ p.especie }}</strong>{{ p.detalhes }}
-                </span>
-                <button type="button" class="botao-excluir" data-acao="remover-planta" aria-label="Remover" data-on='{"click":"remover"}'>🗑</button>
+            <li class="item-card">
+                <card-planta data-bind='{"dados":"p.card","data-id":"p.id"}'></card-planta>
             </li>
         </template>
     </ul>
-    <form class="formulario-planta" data-on='{"submit":"aoEnviar"}'>
-        <label>Espécie / nome da planta
-            <input type="text" name="especie" required maxlength="80" list="sugestoes-especies-planta" autocomplete="off" />
-            <datalist id="sugestoes-especies-planta">
-                <template data-for="s in sugestoes : id">
-                    <option data-bind='{"value":"s.nome"}'>{{ s.cientifico }}</option>
+    <button type="button" class="botao-primario botao-largo" data-acao="abrir-formulario-planta" data-bind='{"hidden":"formularioAberto"}' data-on='{"click":"abrirFormulario"}'>+ Adicionar planta</button>
+    <form class="formulario-planta" data-bind='{"hidden":"formularioFechado"}' data-on='{"submit":"aoEnviar"}'>
+        <strong class="formulario-planta-titulo">{{ tituloFormulario }}</strong>
+        <div class="campo-especie">
+            <label>Espécie / nome da planta
+                <campo-limpavel><input type="text" name="especie" required maxlength="80" autocomplete="off" data-on='{"input":"aoDigitarEspecie"}' /></campo-limpavel>
+            </label>
+            <ul class="opcoes-especie" role="listbox" data-bind='{"hidden":"semOpcoes"}'>
+                <template data-for="o in opcoes : id">
+                    <li>
+                        <button type="button" class="opcao-especie" role="option" data-on='{"click":"escolherOpcao"}'>
+                            <strong><template data-for="s in o.nomeTrechos : k"><span data-class='{"destaque-busca":"s.m"}'>{{ s.t }}</span></template></strong>
+                            <em><template data-for="s in o.cienTrechos : k"><span data-class='{"destaque-busca":"s.m"}'>{{ s.t }}</span></template></em>
+                        </button>
+                    </li>
                 </template>
-            </datalist>
-        </label>
+            </ul>
+            <p class="ajuda-campo" data-bind='{"hidden":"semAviso"}'>Não está na biblioteca: fica só como texto neste metro. Cadastre a espécie em 🌱 Biblioteca de plantas para reaproveitar.</p>
+        </div>
         <label>Quantidade (opcional)
             <input type="number" name="quantidade" min="1" step="1" />
+        </label>
+        <label>Sementes plantadas (opcional)
+            <input type="number" name="sementes" min="1" step="1" inputmode="numeric" />
         </label>
         <label>Observação (opcional)
             <input type="text" name="observacao" maxlength="200" />
@@ -30,8 +40,17 @@
         <label>Data de plantio (opcional)
             <input type="text" name="data_plantio" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" data-on='{"input":"mascararData"}' />
         </label>
-        <div class="acoes-formulario">
-            <button type="submit" class="botao-primario botao-largo">Adicionar planta</button>
+        <div class="aviso-conflito-planta" role="alert" data-bind='{"hidden":"semConflito"}'>
+            <p>{{ textoConflito }}</p>
+            <div class="acoes-formulario">
+                <button type="button" class="botao-primario" data-on='{"click":"atualizarExistente"}'>Atualizar a existente</button>
+                <button type="button" data-on='{"click":"adicionarComoNova"}'>É uma nova</button>
+                <button type="button" data-on='{"click":"voltarDoConflito"}'>Voltar</button>
+            </div>
+        </div>
+        <div class="acoes-formulario" data-bind='{"hidden":"conflitoAtivo"}'>
+            <button type="submit" class="botao-primario">{{ rotuloEnviar }}</button>
+            <button type="button" data-on='{"click":"fecharFormulario"}'>Cancelar</button>
         </div>
     </form>
 </dialog>

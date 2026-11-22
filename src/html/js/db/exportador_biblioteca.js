@@ -1,6 +1,6 @@
 import { plantaTerraDB } from "./plantaterra_db.js";
 import { baixarArquivo } from "./util_arquivo.js";
-import { normalizarNome, sanearEspecie } from "../dominio/biblioteca_plantas.js";
+import { chaveEspecie, sanearEspecie } from "../dominio/biblioteca_plantas.js";
 
 const FORMATO = "plantaterra-biblioteca";
 const FORMATO_VERSAO = 1;
@@ -60,7 +60,7 @@ export async function importarBiblioteca(arquivoOuTexto) {
  */
 export async function mesclarEspecies(lista) {
     const existentes = await plantaTerraDB.listarEspecies();
-    const nomesConhecidos = new Set(existentes.map(e => normalizarNome(e.nome_popular)));
+    const nomesConhecidos = new Set(existentes.map(e => chaveEspecie(e.nome_popular, e.nome_cientifico)));
 
     const resumo = { adicionadas: 0, jaExistentes: 0, invalidas: 0 };
     for (const bruta of lista) {
@@ -69,7 +69,7 @@ export async function mesclarEspecies(lista) {
             resumo.invalidas++;
             continue;
         }
-        const chave = normalizarNome(especie.nomePopular);
+        const chave = chaveEspecie(especie.nomePopular, especie.nomeCientifico);
         if (nomesConhecidos.has(chave)) {
             resumo.jaExistentes++;
             continue;
