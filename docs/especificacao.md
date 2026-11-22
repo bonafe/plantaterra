@@ -539,6 +539,6 @@ docs/
 ### Navegação: seta para a landing e migalhas (breadcrumbs)
 
 - A lista de projetos tem a seta **"←"** que volta para a landing page (`../../` a partir de `src/html/`).
-- O cabeçalho do projeto mostra migalhas no lugar do título: **"← Projeto / Agrofloresta / [SAF selecionado] / Linha X · metro N"** (nas vistas de perímetro e estações: "Projeto / Perímetro"). Cada trecho, exceto o último, é tocável e volta àquele nível ("Projeto" → tela de entrada; os demais fecham o painel de plantas). A seta "←" continua subindo um nível por vez. Por isso o painel de plantas não tem seta nem título próprios (economiza altura).
+- O cabeçalho do projeto mostra migalhas (que quebram em mais de uma linha, nunca truncam) no lugar do título: **"← Projeto / Agrofloresta / [SAF selecionado] / Linha X · metro N"** (nas vistas de perímetro e estações: "Projeto / Perímetro"). Cada trecho, exceto o último, é tocável e volta àquele nível ("Projeto" → tela de entrada; os demais fecham o painel de plantas). A seta "←" continua subindo um nível por vez. Por isso o painel de plantas não tem seta nem título próprios (economiza altura).
 - A biblioteca de plantas e a tela de apoio usam o mesmo padrão: "← PlantaTerra / Biblioteca" e "← PlantaTerra / Apoiar" ("PlantaTerra" volta à lista de projetos).
 - Ao abrir o projeto, o mapa enquadra a propriedade inteira usando `projeto.extensao_propriedade` (§8), sem esperar as camadas carregarem.
