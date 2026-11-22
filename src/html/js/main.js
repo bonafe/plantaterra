@@ -11,6 +11,19 @@ import { garantirArmazenamentoPersistente } from "./armazenamento.js";
 
 const app = document.querySelector("#app");
 
+// Erro que ninguém tratou: sem isto, no celular (sem console) o app só "não faz nada".
+function mostrarErroNaTela(erro) {
+    const aviso = document.createElement("div");
+    aviso.className = "aviso-banco";
+    aviso.setAttribute("role", "alert");
+    aviso.innerHTML = `<p></p><button type="button" class="botao-primario">Fechar</button>`;
+    aviso.querySelector("p").textContent = `Erro: ${erro?.message ?? erro}`;
+    aviso.querySelector("button").addEventListener("click", () => aviso.remove());
+    document.body.appendChild(aviso);
+}
+window.addEventListener("error", evento => mostrarErroNaTela(evento.error ?? evento.message));
+window.addEventListener("unhandledrejection", evento => mostrarErroNaTela(evento.reason));
+
 document.querySelector(".rodape-versao").innerHTML = `
     <a href="#/apoiar">❤️ Apoiar</a>
     · <a href="${urlFeedbackWhatsApp()}" target="_blank" rel="noopener">💬 Relatar</a>
