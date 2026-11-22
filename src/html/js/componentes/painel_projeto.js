@@ -15,13 +15,13 @@ import { areaPoligonoMetros2 } from "../geo/geodesia.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
 import { agruparPlantasPorMetro } from "../dominio/saf.js";
-import { normalizarNome } from "../dominio/biblioteca_plantas.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
-import { escaparHtml, formatarMetros, formatarArea, formatarData, formatarDataSimples, parsearDataBr } from "./util_dom.js";
+import { escaparHtml, formatarMetros, formatarArea, formatarData } from "./util_dom.js";
 import "./mapa_projeto.js";
 import "./captura_gps.js";
 import "./matriz_saf.js";
 import "./andar_gps.js";
+import "./dialogo_planta_metro.js";
 
 const CHAVE_ULTIMO_LUGAR = "plantaterra:ultimo-lugar";
 
@@ -234,29 +234,7 @@ export class PainelProjeto extends HTMLElement {
                     </div>
                 </dialog>
 
-                <dialog class="dialogo-planta-metro">
-                    <h2 class="planta-metro-titulo"></h2>
-                    <ul class="lista-plantas-metro"></ul>
-                    <form class="formulario-planta">
-                        <label>Espécie / nome da planta
-                            <input type="text" name="especie" required maxlength="80" list="sugestoes-especies" autocomplete="off" />
-                            <datalist id="sugestoes-especies"></datalist>
-                        </label>
-                        <label>Quantidade (opcional)
-                            <input type="number" name="quantidade" min="1" step="1" />
-                        </label>
-                        <label>Observação (opcional)
-                            <input type="text" name="observacao" maxlength="200" />
-                        </label>
-                        <label>Data de plantio (opcional)
-                            <input type="text" name="data_plantio" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" />
-                        </label>
-                        <div class="acoes-formulario">
-                            <button type="submit" class="botao-primario">Adicionar planta</button>
-                            <button type="button" data-acao="fechar-planta-metro">Fechar</button>
-                        </div>
-                    </form>
-                </dialog>
+                <dialogo-planta-metro></dialogo-planta-metro>
             </div>
         `;
 
@@ -1317,123 +1295,50 @@ export class PainelProjeto extends HTMLElement {
             await this.recarregarTudo();
         });
 
-        this._wireEditorSaf();
+        this._wireDialogoPlanta();
     }
 
     /**
-     * Matriz com todas as linhas de um SAF de uma vez, alinhadas por posição
-     * geográfica real (ver docs/especificacao.md secao 14.5a) — uma linha
-     * dividida em partes (ex: "Linha 3 Norte"/"Linha 3 Sul") aparece como uma
-     * única fileira da matriz, com o vão real entre as partes em branco.
+     * Diálogo das plantas de um metro: o componente <dialogo-planta-metro> só
+     * mostra e avisa; aqui ficam o banco, o mapa e a recarga dos dados.
      */
-    _wireEditorSaf() {
-        const dialogoPlanta = this.querySelector(".dialogo-planta-metro");
-        const tituloPlanta = this.querySelector(".planta-metro-titulo");
-        const listaPlantasMetro = this.querySelector(".lista-plantas-metro");
-        const formularioPlanta = this.querySelector(".formulario-planta");
-        const listaSugestoesEspecies = this.querySelector("#sugestoes-especies");
-        this._especiesDoCatalogo = [];
+    _wireDialogoPlanta() {
+        const dialogo = this.querySelector("dialogo-planta-metro");
 
-        // Recarregado a cada abertura do diálogo: a biblioteca é global e pode
-        // ter mudado desde a última vez (editada em outra tela).
-        const carregarSugestoesEspecies = async () => {
-            this._especiesDoCatalogo = await plantaTerraDB.listarEspecies();
-            listaSugestoesEspecies.innerHTML = this._especiesDoCatalogo
-                .map(e => `<option value="${escaparHtml(e.nome_popular)}">${escaparHtml(e.nome_cientifico ?? "")}</option>`)
-                .join("");
+        this._abrirDialogoMetro = async (linha, indiceMetro, coordenada) => {
+            this._linhaAtualParaPlanta = linha;
+            this._metroEmEdicao = indiceMetro;
+            if (coordenada) this._coordenadaMetroAtual = coordenada;
+            this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual);
+
+            const rotuloLinha = linha.numero_linha !== null ? `Linha ${linha.numero_linha}` : linha.nome_original;
+            // Com mais de um SAF no projeto, "Linha 1" sozinho é ambíguo.
+            const safDaLinha = this.safsComLinhas.find(({ saf }) => saf.id === linha.saf_id)?.saf;
+            const prefixoSaf = this.safsComLinhas.length > 1 && safDaLinha ? `${safDaLinha.nome} · ` : "";
+
+            // A biblioteca é global e pode ter mudado em outra tela: relê a cada abertura.
+            if (!dialogo.aberto) dialogo.especies = await plantaTerraDB.listarEspecies();
+            dialogo.abrir({
+                titulo: `${prefixoSaf}${rotuloLinha} — metro ${indiceMetro}`,
+                plantas: (this._plantasPorLinhaEmEdicao.get(linha.id) ?? []).filter(p => p.indice_metro === indiceMetro)
+            });
         };
 
-        this.querySelector('[data-acao="fechar-planta-metro"]').addEventListener("click", () => dialogoPlanta.close());
-
-        const campoDataPlantio = formularioPlanta.querySelector('[name="data_plantio"]');
-        campoDataPlantio.addEventListener("input", () => {
-            const digitos = campoDataPlantio.value.replace(/\D/g, "").slice(0, 8);
-            if (digitos.length > 4) {
-                campoDataPlantio.value = `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}/${digitos.slice(4)}`;
-            } else if (digitos.length > 2) {
-                campoDataPlantio.value = `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
-            } else {
-                campoDataPlantio.value = digitos;
-            }
-        });
-
-        formularioPlanta.addEventListener("submit", async evento => {
-            evento.preventDefault();
-            const dados = new FormData(formularioPlanta);
-            const dataPlantioTexto = dados.get("data_plantio").trim();
-            let dataPlantio = null;
-            if (dataPlantioTexto) {
-                dataPlantio = parsearDataBr(dataPlantioTexto);
-                if (dataPlantio === null) {
-                    alert("Data de plantio inválida. Use o formato dd/mm/aaaa.");
-                    return;
-                }
-            }
-
-            // Nome igual (sem caixa/acento) a uma espécie da biblioteca vincula
-            // ao catálogo; qualquer outro texto continua valendo como texto livre.
-            const especieDigitada = dados.get("especie").trim();
-            const chaveDigitada = normalizarNome(especieDigitada);
-            const especieDoCatalogo = this._especiesDoCatalogo.find(e => normalizarNome(e.nome_popular) === chaveDigitada);
-
+        dialogo.addEventListener("planta-adicionada", async evento => {
             await plantaTerraDB.criarPlanta({
                 linhaId: this._linhaAtualParaPlanta.id,
                 indiceMetro: this._metroEmEdicao,
-                especie: especieDigitada,
-                especieId: especieDoCatalogo?.id ?? null,
-                quantidade: dados.get("quantidade") ? Number(dados.get("quantidade")) : null,
-                observacao: dados.get("observacao").trim() || null,
-                dataPlantio
+                ...evento.detail
             });
-
-            formularioPlanta.reset();
             await this._recarregarAposMudarPlantas();
             this._abrirDialogoMetro(this._linhaAtualParaPlanta, this._metroEmEdicao);
         });
 
-        this._abrirDialogoMetro = (linha, indiceMetro, coordenada) => {
-            this._linhaAtualParaPlanta = linha;
-            this._metroEmEdicao = indiceMetro;
-            if (coordenada) {
-                this._coordenadaMetroAtual = coordenada;
-            }
-            this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual);
-
-            const plantasDoMetro = (this._plantasPorLinhaEmEdicao.get(linha.id) ?? [])
-                .filter(p => p.indice_metro === indiceMetro);
-
-            const rotuloLinha = linha.numero_linha !== null ? `Linha ${linha.numero_linha}` : linha.nome_original;
-            // Com mais de um SAF no projeto, "Linha 1" sozinho é ambíguo (modo Andar mistura todos).
-            const safDaLinha = this.safsComLinhas.find(({ saf }) => saf.id === linha.saf_id)?.saf;
-            const prefixoSaf = this.safsComLinhas.length > 1 && safDaLinha ? `${safDaLinha.nome} · ` : "";
-            tituloPlanta.textContent = `${prefixoSaf}${rotuloLinha} — metro ${indiceMetro}`;
-            listaPlantasMetro.innerHTML = plantasDoMetro.length === 0
-                ? `<li class="lista-vazia">Nenhuma planta cadastrada neste metro ainda.</li>`
-                : plantasDoMetro.map(planta => `
-                    <li class="item-planta" data-id="${planta.id}">
-                        <span>
-                            <strong>${escaparHtml(planta.especie)}</strong>
-                            ${planta.quantidade ? ` (x${planta.quantidade})` : ""}
-                            ${planta.observacao ? ` — ${escaparHtml(planta.observacao)}` : ""}
-                            ${planta.data_plantio ? ` — plantado em ${formatarDataSimples(planta.data_plantio)}` : ""}
-                        </span>
-                        <button type="button" class="botao-excluir" data-acao="remover-planta" aria-label="Remover">🗑</button>
-                    </li>
-                `).join("");
-
-            listaPlantasMetro.querySelectorAll('[data-acao="remover-planta"]').forEach(botao => {
-                botao.addEventListener("click", async () => {
-                    const id = botao.closest(".item-planta").dataset.id;
-                    await plantaTerraDB.removerPlanta(id);
-                    await this._recarregarAposMudarPlantas();
-                    this._abrirDialogoMetro(linha, indiceMetro);
-                });
-            });
-
-            formularioPlanta.reset();
-            carregarSugestoesEspecies();
-            dialogoPlanta.showModal();
-        };
+        dialogo.addEventListener("planta-removida", async evento => {
+            await plantaTerraDB.removerPlanta(evento.detail.id);
+            await this._recarregarAposMudarPlantas();
+            this._abrirDialogoMetro(this._linhaAtualParaPlanta, this._metroEmEdicao);
+        });
     }
 }
 

@@ -431,6 +431,7 @@ A vista SAF é composta por componentes independentes, ligados pelo `painel_proj
 
 - **`<matriz-saf>`** (`componentes/matriz_saf.js`): entrada `definir({matriz, plantasPorLinha})`, `limpar()`, `marcarProximos(chaves, chaveMaisProximo)`, `rolarPara(chave)`, `modoAndar`; eventos `metro-tocado {linhaId, indiceMetro, coordenada}` e `controle-assumido`.
 - **`<andar-gps>`** (`componentes/andar_gps.js`): entrada `quadrados`, `iniciar()`, `parar()`, `assumirControle()`, `ativo`, `seguindo`; eventos `posicao {posicao, proximos, maisProximo, distanciaM, seguindo, atuando, centralizar, primeiroSinal}`, `rumo {graus}` e `rumo-ativo {ativo}`.
+- **`<dialogo-planta-metro>`** (`componentes/dialogo_planta_metro.js`): diálogo modal das plantas de um metro (§14.6). Entrada `especies` (sugestões da biblioteca), `abrir({titulo, plantas})` (já aberto, só atualiza), `fechar()`, `aberto`; eventos `planta-adicionada {especie, especieId, quantidade, observacao, dataPlantio}` (a vinculação ao catálogo por nome normalizado, §15.1, e a máscara/validação da data dd/mm/aaaa são dele) e `planta-removida {id}`. Banco e recarga ficam em `painel_projeto.js#_wireDialogoPlanta`.
 - Quem orquestra (`painel_projeto.js#_wireVistaSaf`) traduz eventos em ações no mapa, na matriz e na escolha do SAF.
 
 ## 15. Roadmap de fases futuras (fora de escopo desta implementação)
