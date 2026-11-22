@@ -27,6 +27,7 @@ import "./dialogo_estacao.js";
 import "./dialogo_leitura.js";
 import "./lista_estacoes.js";
 import "./dialogo_historico_perimetro.js";
+import "./dialogo_importar_saf.js";
 
 const CHAVE_ULTIMO_LUGAR = "plantaterra:ultimo-lugar";
 
@@ -171,14 +172,7 @@ export class PainelProjeto extends HTMLElement {
                 <dialogo-estacao></dialogo-estacao>
                 <dialogo-leitura></dialogo-leitura>
 
-                <dialog class="dialogo-importar-saf">
-                    <h2>Importar SAF/linhas de plantio</h2>
-                    <div class="importar-saf-conteudo"></div>
-                    <div class="acoes-formulario">
-                        <button type="button" data-acao="confirmar-importacao-saf" class="botao-primario">Importar</button>
-                        <button type="button" data-acao="cancelar-importacao-saf">Cancelar</button>
-                    </div>
-                </dialog>
+                <dialogo-importar-saf></dialogo-importar-saf>
 
                 <dialogo-planta-metro></dialogo-planta-metro>
             </div>
@@ -910,89 +904,28 @@ export class PainelProjeto extends HTMLElement {
         };
     }
 
+    /**
+     * Importação de KMZ/KML: aqui ficam a leitura do arquivo e a gravação; a
+     * pré-visualização é o <dialogo-importar-saf>.
+     */
     _wireSaf() {
-        const dialogoImportar = this.querySelector(".dialogo-importar-saf");
-        const conteudoImportar = this.querySelector(".importar-saf-conteudo");
-        const botaoConfirmarImportacao = this.querySelector('[data-acao="confirmar-importacao-saf"]');
+        const dialogo = this.querySelector("dialogo-importar-saf");
 
         this.querySelector('[data-acao="importar-arquivo-saf"]').addEventListener("change", async evento => {
             const arquivo = evento.target.files[0];
             evento.target.value = "";
             if (!arquivo) return;
 
-            let analise;
             try {
-                analise = await analisarArquivoParaImportacao(arquivo);
+                dialogo.abrir(await analisarArquivoParaImportacao(arquivo));
             } catch (erro) {
                 alert(`Não foi possível ler o arquivo: ${erro.message}`);
-                return;
             }
-
-            this._analiseSafPendente = analise;
-            const safsComLinhas = analise.safsEncontradas.filter(saf => saf.linhas.length > 0);
-            const totalLinhas = safsComLinhas.reduce((soma, saf) => soma + saf.linhas.length, 0);
-            const totalContexto = analise.elementosContexto.length;
-
-            if (safsComLinhas.length === 0 && totalContexto === 0) {
-                conteudoImportar.innerHTML = `<p>Nenhum SAF com linhas nem elemento de contexto foi reconhecido neste arquivo.</p>`;
-                botaoConfirmarImportacao.hidden = true;
-            } else {
-                botaoConfirmarImportacao.hidden = false;
-                conteudoImportar.innerHTML = "";
-
-                if (safsComLinhas.length > 0) {
-                    conteudoImportar.innerHTML += `
-                        <p>${safsComLinhas.length} SAF(s), ${totalLinhas} linha(s) reconhecida(s):</p>
-                        <ul class="lista-preview-saf">
-                            ${safsComLinhas.map(saf => `
-                                <li>
-                                    <strong>${escaparHtml(saf.nomeOriginal)}</strong>
-                                    <ul>
-                                        ${saf.linhas.map(linha => `
-                                            <li>
-                                                ${escaparHtml(linha.nomeOriginal)} —
-                                                calculado: ${linha.comprimentoCalculadoM.toFixed(1)} m
-                                                ${linha.metrosDeclarados !== null ? `(declarado: ${linha.metrosDeclarados} m)` : ""}
-                                            </li>
-                                        `).join("")}
-                                    </ul>
-                                </li>
-                            `).join("")}
-                        </ul>
-                    `;
-                }
-
-                if (totalContexto > 0) {
-                    conteudoImportar.innerHTML += `
-                        <p>${totalContexto} elemento(s) de contexto (casas, cercas, ruas etc — só o que está
-                        visível no arquivo) serão adicionados ao mapa para ajudar a situar a propriedade.</p>
-                    `;
-                }
-            }
-
-            if (analise.avisos.length > 0) {
-                conteudoImportar.innerHTML += `
-                    <p><strong>Avisos:</strong></p>
-                    <ul class="lista-avisos-saf">${analise.avisos.map(a => `<li>${escaparHtml(a)}</li>`).join("")}</ul>
-                `;
-            }
-
-            dialogoImportar.showModal();
         });
 
-        this.querySelector('[data-acao="cancelar-importacao-saf"]').addEventListener("click", () => {
-            dialogoImportar.close();
-        });
-
-        botaoConfirmarImportacao.addEventListener("click", async () => {
-            if (!this._analiseSafPendente) return;
-            await importarParaProjeto(
-                this.projetoId,
-                this._analiseSafPendente.safsEncontradas,
-                this._analiseSafPendente.elementosContexto
-            );
-            this._analiseSafPendente = null;
-            dialogoImportar.close();
+        dialogo.addEventListener("importacao-confirmada", async evento => {
+            await importarParaProjeto(this.projetoId, evento.detail.safsEncontradas, evento.detail.elementosContexto);
+            dialogo.fechar();
             await this.recarregarTudo();
         });
 
