@@ -1027,3 +1027,8 @@ mapa-projeto.rotacao-automatica .ol-rotate {
     font-size: 0.85rem;
     color: var(--cor-texto-suave);
 }
+
+campo-coordenada {
+    display: block;
+    margin: 8px 0;
+}

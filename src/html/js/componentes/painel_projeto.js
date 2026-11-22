@@ -16,13 +16,16 @@ import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
 import { agruparPlantasPorMetro } from "../dominio/saf.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
-import { escaparHtml, formatarMetros, formatarArea, formatarData } from "./util_dom.js";
+import { escaparHtml, formatarArea, formatarData } from "./util_dom.js";
 import "./mapa_projeto.js";
 import "./captura_gps.js";
 import "./matriz_saf.js";
 import "./andar_gps.js";
 import "./dialogo_planta_metro.js";
 import "./editor_pontos_trilha.js";
+import "./dialogo_estacao.js";
+import "./dialogo_leitura.js";
+import "./lista_estacoes.js";
 
 const CHAVE_ULTIMO_LUGAR = "plantaterra:ultimo-lugar";
 
@@ -117,7 +120,7 @@ export class PainelProjeto extends HTMLElement {
                                 <h2>Estações de nível</h2>
                                 <button type="button" data-acao="nova-estacao" class="botao-primario">+ Estação</button>
                             </div>
-                            <ul class="lista-estacoes"></ul>
+                            <lista-estacoes></lista-estacoes>
                         </section>
 
                         <section class="secao-curvas" data-vista-secao="estacoes">
@@ -170,49 +173,8 @@ export class PainelProjeto extends HTMLElement {
                     </div>
                 </dialog>
 
-                <dialog class="dialogo-estacao">
-                    <form class="formulario-estacao">
-                        <h2>Nova estação de nível</h2>
-                        <p class="estacao-coordenada-status">Nenhuma coordenada capturada ainda.</p>
-                        <button type="button" data-acao="capturar-coordenada-estacao" class="botao-secundario">
-                            Capturar posição GPS
-                        </button>
-                        <label>Nome da estação
-                            <input type="text" name="nome" required maxlength="60" />
-                        </label>
-                        <label>Altura do instrumento (m)
-                            <input type="number" name="altura_instrumento" step="0.001" min="0" required />
-                        </label>
-                        <label class="campo-amarracao" hidden>Amarrar a
-                            <select name="amarrada_a"></select>
-                        </label>
-                        <div class="acoes-formulario">
-                            <button type="submit" class="botao-primario" disabled>Salvar estação</button>
-                            <button type="button" data-acao="cancelar-estacao">Cancelar</button>
-                        </div>
-                    </form>
-                </dialog>
-
-                <dialog class="dialogo-leitura">
-                    <form class="formulario-leitura">
-                        <h2>Nova leitura</h2>
-                        <p class="leitura-coordenada-status">Nenhuma coordenada capturada ainda.</p>
-                        <button type="button" data-acao="capturar-coordenada-leitura" class="botao-secundario">
-                            Capturar posição GPS
-                        </button>
-                        <label>Altura lida na mira (m)
-                            <input type="number" name="altura_mira" step="0.001" min="0" required />
-                        </label>
-                        <label class="campo-checkbox">
-                            <input type="checkbox" name="eh_ponto_amarracao" />
-                            É o ponto de amarração com outra estação
-                        </label>
-                        <div class="acoes-formulario">
-                            <button type="submit" class="botao-primario" disabled>Salvar leitura</button>
-                            <button type="button" data-acao="cancelar-leitura">Cancelar</button>
-                        </div>
-                    </form>
-                </dialog>
+                <dialogo-estacao></dialogo-estacao>
+                <dialogo-leitura></dialogo-leitura>
 
                 <dialog class="dialogo-importar-saf">
                     <h2>Importar SAF/linhas de plantio</h2>
@@ -637,127 +599,45 @@ export class PainelProjeto extends HTMLElement {
 
     // ---------------- Estações e leituras ----------------
 
+    /**
+     * Estações e leituras: <dialogo-estacao>, <dialogo-leitura> e <lista-estacoes>
+     * só mostram e avisam; aqui ficam o GPS (<captura-gps>), o banco e a recarga.
+     */
     _wireEstacoes() {
-        const dialogoEstacao = this.querySelector(".dialogo-estacao");
-        const formularioEstacao = this.querySelector(".formulario-estacao");
-        const statusCoordenadaEstacao = this.querySelector(".estacao-coordenada-status");
-        const botaoSalvarEstacao = formularioEstacao.querySelector('button[type="submit"]');
-        const campoAmarracao = formularioEstacao.querySelector(".campo-amarracao");
-        const selectAmarracao = campoAmarracao.querySelector("select");
+        const dialogoEstacao = this.querySelector("dialogo-estacao");
+        const dialogoLeitura = this.querySelector("dialogo-leitura");
+        const lista = this.querySelector("lista-estacoes");
 
-        this.querySelector('[data-acao="nova-estacao"]').addEventListener("click", async () => {
-            formularioEstacao.reset();
-            this._coordenadaCapturadaEstacao = null;
-            statusCoordenadaEstacao.textContent = "Nenhuma coordenada capturada ainda.";
-            botaoSalvarEstacao.disabled = true;
+        const capturar = () => this.capturaGps.abrir();
+        dialogoEstacao.capturador = capturar;
+        dialogoLeitura.capturador = capturar;
 
-            const estacoesComAmarracaoDisponivel = this.estacoesComLeituras.filter(
-                ({ leituras }) => leituras.some(l => l.eh_ponto_amarracao)
-            );
-
-            if (estacoesComAmarracaoDisponivel.length > 0) {
-                selectAmarracao.innerHTML =
-                    `<option value="">Nenhuma (esta será uma referência independente)</option>` +
-                    estacoesComAmarracaoDisponivel.map(({ estacao }) =>
-                        `<option value="${estacao.id}">${escaparHtml(estacao.nome)}</option>`
-                    ).join("");
-                campoAmarracao.hidden = false;
-            } else {
-                campoAmarracao.hidden = true;
-            }
-
-            dialogoEstacao.showModal();
-        });
-
-        this.querySelector('[data-acao="cancelar-estacao"]').addEventListener("click", () => dialogoEstacao.close());
-
-        this.querySelector('[data-acao="capturar-coordenada-estacao"]').addEventListener("click", async () => {
-            statusCoordenadaEstacao.textContent = "Capturando…";
-            const resultado = await this.capturaGps.abrir();
-            if (!resultado) {
-                statusCoordenadaEstacao.textContent = "Não foi possível obter uma posição GPS. Tente novamente.";
-                return;
-            }
-            this._coordenadaCapturadaEstacao = resultado;
-            statusCoordenadaEstacao.textContent =
-                `Capturado: ${resultado.lat.toFixed(6)}, ${resultado.lon.toFixed(6)} (±${resultado.precisao.toFixed(1)} m)`;
-            botaoSalvarEstacao.disabled = false;
-        });
-
-        formularioEstacao.addEventListener("submit", async evento => {
-            evento.preventDefault();
-            if (!this._coordenadaCapturadaEstacao) return;
-
-            const dados = new FormData(formularioEstacao);
-            const amarradaAEstacaoId = dados.get("amarrada_a") || null;
-
-            await plantaTerraDB.criarEstacao({
-                projetoId: this.projetoId,
-                nome: dados.get("nome").trim(),
-                coordenada: {
-                    lat: this._coordenadaCapturadaEstacao.lat,
-                    lon: this._coordenadaCapturadaEstacao.lon,
-                    precisao: this._coordenadaCapturadaEstacao.precisao
-                },
-                alturaInstrumento: Number(dados.get("altura_instrumento")),
-                amarradaAEstacaoId
+        this.querySelector('[data-acao="nova-estacao"]').addEventListener("click", () => {
+            dialogoEstacao.abrir({
+                estacoesParaAmarrar: this.estacoesComLeituras
+                    .filter(({ leituras }) => leituras.some(l => l.eh_ponto_amarracao))
+                    .map(({ estacao }) => ({ id: estacao.id, nome: estacao.nome }))
             });
+        });
 
-            dialogoEstacao.close();
+        dialogoEstacao.addEventListener("estacao-criada", async evento => {
+            await plantaTerraDB.criarEstacao({ projetoId: this.projetoId, ...evento.detail });
+            dialogoEstacao.fechar();
             await this.recarregarTudo();
         });
 
-        this._wireLeituras();
-    }
-
-    _wireLeituras() {
-        const dialogoLeitura = this.querySelector(".dialogo-leitura");
-        const formularioLeitura = this.querySelector(".formulario-leitura");
-        const statusCoordenadaLeitura = this.querySelector(".leitura-coordenada-status");
-        const botaoSalvarLeitura = formularioLeitura.querySelector('button[type="submit"]');
-
-        this.querySelector('[data-acao="cancelar-leitura"]').addEventListener("click", () => dialogoLeitura.close());
-
-        this.querySelector('[data-acao="capturar-coordenada-leitura"]').addEventListener("click", async () => {
-            statusCoordenadaLeitura.textContent = "Capturando…";
-            const resultado = await this.capturaGps.abrir();
-            if (!resultado) {
-                statusCoordenadaLeitura.textContent = "Não foi possível obter uma posição GPS. Tente novamente.";
-                return;
-            }
-            this._coordenadaCapturadaLeitura = resultado;
-            statusCoordenadaLeitura.textContent =
-                `Capturado: ${resultado.lat.toFixed(6)}, ${resultado.lon.toFixed(6)} (±${resultado.precisao.toFixed(1)} m)`;
-            botaoSalvarLeitura.disabled = false;
-        });
-
-        formularioLeitura.addEventListener("submit", async evento => {
-            evento.preventDefault();
-            if (!this._coordenadaCapturadaLeitura || !this._estacaoAtualParaLeitura) return;
-
-            const dados = new FormData(formularioLeitura);
-            await this._salvarNovaLeitura(this._estacaoAtualParaLeitura, {
-                coordenada: {
-                    lat: this._coordenadaCapturadaLeitura.lat,
-                    lon: this._coordenadaCapturadaLeitura.lon,
-                    precisao: this._coordenadaCapturadaLeitura.precisao
-                },
-                alturaMira: Number(dados.get("altura_mira")),
-                ehPontoAmarracao: dados.get("eh_ponto_amarracao") === "on"
-            });
-
-            dialogoLeitura.close();
-            await this.recarregarTudo();
-        });
-
-        this._abrirDialogoNovaLeitura = estacao => {
-            formularioLeitura.reset();
-            this._coordenadaCapturadaLeitura = null;
+        lista.addEventListener("nova-leitura-solicitada", evento => {
+            const { estacao } = this.estacoesComLeituras.find(item => item.estacao.id === evento.detail.estacaoId);
             this._estacaoAtualParaLeitura = estacao;
-            statusCoordenadaLeitura.textContent = "Nenhuma coordenada capturada ainda.";
-            botaoSalvarLeitura.disabled = true;
-            dialogoLeitura.showModal();
-        };
+            dialogoLeitura.abrir();
+        });
+
+        dialogoLeitura.addEventListener("leitura-criada", async evento => {
+            if (!this._estacaoAtualParaLeitura) return;
+            await this._salvarNovaLeitura(this._estacaoAtualParaLeitura, evento.detail);
+            dialogoLeitura.fechar();
+            await this.recarregarTudo();
+        });
     }
 
     /**
@@ -802,42 +682,7 @@ export class PainelProjeto extends HTMLElement {
     }
 
     _renderizarListaEstacoes() {
-        const listaElemento = this.querySelector(".lista-estacoes");
-
-        if (this.estacoesComLeituras.length === 0) {
-            listaElemento.innerHTML = `<li class="lista-vazia">Nenhuma estação ainda.</li>`;
-            return;
-        }
-
-        listaElemento.innerHTML = this.estacoesComLeituras.map(({ estacao, leituras }) => `
-            <li class="item-estacao" data-id="${estacao.id}">
-                <details>
-                    <summary>
-                        <strong>${escaparHtml(estacao.nome)}</strong>
-                        <span>altura instr.: ${formatarMetros(estacao.altura_instrumento)}</span>
-                        <span>offset: ${formatarMetros(estacao.offset_altitude)}</span>
-                    </summary>
-                    <ul class="lista-leituras">
-                        ${leituras.map(leitura => `
-                            <li class="item-leitura">
-                                mira: ${formatarMetros(leitura.altura_mira)}
-                                → altitude: ${formatarMetros(leitura.altitude_relativa, 2)}
-                                ${leitura.eh_ponto_amarracao ? " 🔗 amarração" : ""}
-                            </li>
-                        `).join("")}
-                    </ul>
-                    <button type="button" class="botao-secundario" data-acao="nova-leitura">+ Leitura nesta estação</button>
-                </details>
-            </li>
-        `).join("");
-
-        listaElemento.querySelectorAll('[data-acao="nova-leitura"]').forEach(botao => {
-            botao.addEventListener("click", () => {
-                const id = botao.closest(".item-estacao").dataset.id;
-                const { estacao } = this.estacoesComLeituras.find(item => item.estacao.id === id);
-                this._abrirDialogoNovaLeitura(estacao);
-            });
-        });
+        this.querySelector("lista-estacoes").estacoes = this.estacoesComLeituras;
     }
 
     // ---------------- Curvas de nível ----------------
