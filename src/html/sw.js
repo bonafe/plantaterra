@@ -1,6 +1,6 @@
 // Mantenha sincronizado com VERSAO_APP em js/versao.js (rodapé do app) —
 // bump os dois juntos a cada release, ver docs/especificacao.md secao 10.
-const VERSAO_APP = "34";
+const VERSAO_APP = "35";
 const VERSAO_CACHE = `plantaterra-v${VERSAO_APP}`;
 const CACHE_TILES = "plantaterra-tiles-v1";
 
@@ -15,6 +15,7 @@ const ARQUIVOS_DO_APP = [
     "./js/componentes/matriz_saf.js",
     "./js/componentes/andar_gps.js",
     "./js/componentes/dialogo_planta_metro.js",
+    "./js/componentes/dialogo_planta_metro.html",
     "./js/componentes/editor_pontos_trilha.js",
     "./js/componentes/campo_coordenada.js",
     "./js/componentes/campo_coordenada.html",

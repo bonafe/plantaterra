@@ -442,7 +442,7 @@ A vista SAF é composta por componentes independentes, ligados pelo `painel_proj
 
 O núcleo do UltimaJS (`component_base.js`, `reactive_component.js`, `controller_base.js`) está vendorizado em `src/html/vendor/ultima/` (cópia; mudanças vão para o repositório `ultima`). Os componentes do §14.11 estão sendo trocados, um a um, de `HTMLElement` puro para `ReactiveComponent`, **sem mudar o contrato** (propriedades/métodos de entrada e eventos de saída).
 
-- **Migrados:** `<campo-coordenada>` (piloto), `<lista-estacoes>`, `<dialogo-estacao>` e `<dialogo-leitura>`.
+- **Migrados:** `<campo-coordenada>` (piloto), `<lista-estacoes>`, `<dialogo-estacao>`, `<dialogo-leitura>` e `<dialogo-planta-metro>` (lista de plantas e sugestões da biblioteca reativas; máscara da data via `data-on="input"`).
 - **Como migrar um componente:** o HTML vai para um arquivo `.html` ao lado do `.js` (template com `{{ caminho }}`, `data-on`, `data-bind`, `data-if`, `data-for`); a classe estende `ReactiveComponent` com `super({ templateUrl, shadowDom: false }, import.meta.url)`; o estado reativo fica em `this.state`.
 - **`shadowDom: false` sempre** — Shadow DOM isolaria o componente do `css/estilo.css` único do app.
 - **O template carrega de forma assíncrona** (`fetch`): o `.html` precisa estar em `ARQUIVOS_DO_APP` do `sw.js` (senão quebra offline), e o componente só renderiza quando `loaded`. Estado definido antes do carregamento fica guardado e é aplicado depois — por isso os métodos de entrada (`limpar()`, etc.) podem ser chamados logo após a criação.

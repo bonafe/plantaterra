@@ -1,0 +1,39 @@
+<dialog class="dialogo-planta-metro">
+    <h2 class="planta-metro-titulo">{{ titulo }}</h2>
+    <ul class="lista-plantas-metro">
+        <template data-if="vazia">
+            <li class="lista-vazia">Nenhuma planta cadastrada neste metro ainda.</li>
+        </template>
+        <template data-for="p in plantas : id">
+            <li class="item-planta">
+                <span>
+                    <strong>{{ p.especie }}</strong>{{ p.detalhes }}
+                </span>
+                <button type="button" class="botao-excluir" data-acao="remover-planta" aria-label="Remover" data-on='{"click":"remover"}'>🗑</button>
+            </li>
+        </template>
+    </ul>
+    <form class="formulario-planta" data-on='{"submit":"aoEnviar"}'>
+        <label>Espécie / nome da planta
+            <input type="text" name="especie" required maxlength="80" list="sugestoes-especies-planta" autocomplete="off" />
+            <datalist id="sugestoes-especies-planta">
+                <template data-for="s in sugestoes : id">
+                    <option data-bind='{"value":"s.nome"}'>{{ s.cientifico }}</option>
+                </template>
+            </datalist>
+        </label>
+        <label>Quantidade (opcional)
+            <input type="number" name="quantidade" min="1" step="1" />
+        </label>
+        <label>Observação (opcional)
+            <input type="text" name="observacao" maxlength="200" />
+        </label>
+        <label>Data de plantio (opcional)
+            <input type="text" name="data_plantio" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" data-on='{"input":"mascararData"}' />
+        </label>
+        <div class="acoes-formulario">
+            <button type="submit" class="botao-primario">Adicionar planta</button>
+            <button type="button" data-acao="fechar-planta-metro" data-on='{"click":"fechar"}'>Fechar</button>
+        </div>
+    </form>
+</dialog>
