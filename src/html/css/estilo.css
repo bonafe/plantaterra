@@ -48,6 +48,25 @@ body {
     flex-direction: column;
 }
 
+/*
+ * Os custom elements de tela (<lista-projetos>, <tela-biblioteca>, <tela-apoiar>) ficam entre #app e o
+ * conteúdo; sem isto eles são "inline" e crescem até a altura de todo o conteúdo — a página inteira
+ * passava a rolar e o rodapé (logo abaixo do #app) rolava junto, parando no meio de uma lista longa.
+ * Com altura limitada ao #app, quem rola é a própria tela e o rodapé fica sempre embaixo.
+ */
+lista-projetos,
+tela-biblioteca,
+tela-apoiar {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+lista-projetos {
+    overflow-y: auto;
+}
+
 .rodape-versao {
     flex: 0 0 auto;
     text-align: center;
@@ -1549,4 +1568,60 @@ campo-limpavel input[type="search"]::-webkit-search-cancel-button {
     color: inherit;
     border-radius: 2px;
     box-shadow: 0 0 0 1px #fefcbf;
+}
+
+/* Detalhe de espécie com os dados do catálogo botânico: rola dentro do diálogo e recolhe os textos longos */
+.dialogo-detalhe-especie {
+    width: min(560px, calc(100vw - 24px));
+    max-height: 88dvh;
+    overflow-y: auto;
+}
+
+.detalhe-extras details {
+    border-top: 1px solid var(--cor-borda);
+    padding: 6px 0;
+}
+
+.detalhe-extras summary {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.detalhe-extras details p {
+    margin: 4px 0 8px;
+    overflow-wrap: anywhere;
+}
+
+.detalhe-fontes {
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+    overflow-wrap: anywhere;
+}
+
+.opcao-alias {
+    font-size: 0.8rem;
+    color: var(--cor-texto-suave);
+}
+
+.opcao-alias[hidden] {
+    display: none;
+}
+
+/* Ações do detalhe sempre à vista, mesmo com o texto longo rolando por cima */
+.dialogo-detalhe-especie .acoes-formulario {
+    position: sticky;
+    bottom: 0;
+    padding: 8px 0 4px;
+    background: var(--cor-fundo-pagina, #fff);
+}
+
+/* Linhas longas de um card (ex.: notas de curadoria) ficam em até 2 linhas */
+.card-planta-linha {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }

@@ -466,16 +466,42 @@ Estas fases reaproveitam `planta_linha` como núcleo, então são descritas aqui
 
 ### 15.1 Biblioteca de plantas (implementada)
 
-Catálogo de espécies **global do aparelho** — não pertence a nenhum projeto, é reaproveitado por todos. Tela própria (`js/componentes/tela_biblioteca.js`, rota `#/biblioteca`, botão "🌱 Biblioteca de plantas" na lista de projetos): **Identidade de uma espécie = nome popular + nome científico** (`chaveEspecie`): só repetir os dois é duplicata (cadastro e importação da biblioteca); o mesmo nome popular com científicos diferentes é permitido. A busca da biblioteca procura nos dois campos e destaca o trecho encontrado no card. Backup de projeto: cada planta leva `especie_nome_cientifico` e se religa pela dupla popular + científico (backups antigos, sem o científico, só se religam quando o nome identifica uma espécie só). Lista de **cards** (`<card-planta>`: nome popular, científico, ciclo · espaçamento e notas, sem botões — **tocar no card abre o detalhe da espécie**, com **Editar**, **Remover** e **Fechar**, já que não se edita toda hora) em grade que ganha colunas em telas largas, com busca (ignora caixa e acento, procura em nome popular e científico), criar, editar e excluir espécie.
+Catálogo de espécies **global do aparelho** — não pertence a nenhum projeto, é reaproveitado por todos. Tela própria (`js/componentes/tela_biblioteca.js`, rota `#/biblioteca`, botão "🌱 Biblioteca de plantas" na lista de projetos): **Catálogo botânico agroflorestal** (`catalogo_botanico_agroflorestal.json`, campos acima como referência): o botão "⭱ Importar" da biblioteca e o "⭱ Importar" da lista de projetos reconhecem o arquivo (lista `plantas` com `identificacao`, `atributos`, `descricao`) e criam uma espécie por registro (`dominio/biblioteca_plantas.js#especieDeRegistroCatalogo`): o 1º nome popular é o principal (com inicial maiúscula) e todos ficam em `nomes_populares`; `observacoes_de_curadoria` vira `notas`; o aviso "(inferência para planejamento…)" sai do rótulo do estrato. Importar **mescla e nunca sobrescreve**: espécie já presente — mesmo nome popular + científico, ou **mesmo nome científico** (outro nome popular) — é pulada. A busca procura em **todos os nomes populares, no científico e nos sinônimos** e mostra "também: <nome>" quando achou por um nome que não é o principal. **Todos os campos do catálogo são importados**, inclusive os que só poucas espécies têm hoje (diâmetro, densidade, floração, sementes, germinação, advertência de conservação…) — campos novos que o catálogo ganhar vão para `extras` (e seções de texto novas para `detalhes`) e aparecem no detalhe como vieram. Tocar no card abre o detalhe completo (campos acima; textos longos recolhidos em seções; fontes como links). O formulário de edição cobre os campos básicos e "outros nomes populares"; os demais campos são preservados ao editar. **Ocorrência por estado:** `ocorrencia_estados` é extraída do texto (nomes de estado e de região com inicial maiúscula; ignora "para", "América do Sul" e "Sul de Minas") e é só o que o texto **afirma** — "do Ceará até Minas Gerais" cita os extremos, o meio não é inferido. No catálogo atual só 5 das 34 espécies citam estados (as demais dizem "cultivada em todo o Brasil" ou "originária da Ásia"); pintar esses estados no mapa é trabalho futuro.
+
+**Identidade de uma espécie = nome popular + nome científico** (`chaveEspecie`): só repetir os dois é duplicata (cadastro e importação da biblioteca); o mesmo nome popular com científicos diferentes é permitido. A busca da biblioteca procura nos dois campos e destaca o trecho encontrado no card. Backup de projeto: cada planta leva `especie_nome_cientifico` e se religa pela dupla popular + científico (backups antigos, sem o científico, só se religam quando o nome identifica uma espécie só). Lista de **cards** (`<card-planta>`: nome popular, científico, ciclo · espaçamento e notas, sem botões — **tocar no card abre o detalhe da espécie**, com **Editar**, **Remover** e **Fechar**, já que não se edita toda hora) em grade que ganha colunas em telas largas, com busca (ignora caixa e acento, procura em nome popular e científico), criar, editar e excluir espécie.
 
 ```
 especie {                          // object store `especie` (IndexedDB v4)
   id,
-  nome_popular: string,            // obrigatório, único (ignorando caixa/acento)
+  nome_popular: string,            // obrigatório; nome principal. Identidade = nome popular + científico (`chaveEspecie`)
   nome_cientifico: string | null,
   ciclo: "anual" | "bienal" | "perene" | null,
   espacamento_recomendado_m: number | null,
   notas: string | null,
+  // --- campos do catálogo botânico (todos opcionais; espécies cadastradas à mão não os têm) ---
+  nomes_populares: string[],       // todos os nomes (o principal vem primeiro); a busca e o vínculo por nome usam todos
+  familia, autoria: string | null,
+  sinonimos: string[],
+  origem, forma_de_vida: string | null,
+  altura_min_m, altura_max_m: number | null,
+  estrato_saf, exigencia_luminosa: string | null,     // estrato é sugestão de planejamento, não classificação botânica
+  funcoes, partes_utilizadas, usos: string[],
+  ocorrencia_texto: string | null,
+  ocorrencia_estados: string[],    // siglas de UF citadas no texto (`dominio/estados_brasil.js#extrairEstados`)
+  altura_observacao: string | null,
+  diametro_tronco_cm, emergencia_dias, germinacao_meses, mudas_prontas_meses: { min, max } | null,
+  densidade_madeira_g_cm3, sementes_por_kg: number | null,
+  floracao_meses, frutificacao_meses: number[],   // 1–12, na ordem dada (dezembro a março = [12, 1, 2, 3])
+  viabilidade_sementes, taxa_germinacao: string | null,   // texto livre ("menos de 3", "superior a 60%")
+  advertencia_conservacao, subfamilia, taxonomia_alternativa, referencia_botanica: string | null,
+  ocorrencia_precisao: string | null,
+  ocorrencia_geojson: object | null,   // GeoJSON de distribuição, quando o catálogo trouxer (hoje é sempre null)
+  detalhes: { morfologia, madeira, utilidade, ecologia, fenologia, sementes, mudas, ...outras } | null,   // textos longos; seções desconhecidas ficam com o nome que vieram
+  fonte_primaria: { tipo, pagina, arquivo_original, titulo_da_obra, nota } | null,
+  rotulos_originais: { campo: rótulo como no livro } | null,
+  extras: { "secao.chave": valor } | null,   // qualquer campo do catálogo que o app ainda não conhece: guardado como veio, para nada se perder
+  fontes: string[],                // URLs
+  catalogo_id: string | null,      // id do registro no arquivo do catálogo
   criado_em, atualizado_em
 }
 ```

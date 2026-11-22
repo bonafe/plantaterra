@@ -1,7 +1,7 @@
 import { plantaTerraDB } from "./plantaterra_db.js";
 import { baixarArquivo, slug } from "./util_arquivo.js";
 import { serializarEspecies, mesclarEspecies, importarBiblioteca } from "./exportador_biblioteca.js";
-import { chaveEspecie, normalizarNome } from "../dominio/biblioteca_plantas.js";
+import { chaveEspecie, ehCatalogoBotanico, nomesDaEspecie, normalizarNome } from "../dominio/biblioteca_plantas.js";
 
 // Reexportados porque outros módulos (exportador_geoespacial) importam daqui.
 export { baixarArquivo, slug };
@@ -101,7 +101,7 @@ export async function importarArquivo(arquivoOuTexto) {
         throw new Error("o arquivo não é um JSON válido.");
     }
 
-    if (pacote?.formato === FORMATO_BIBLIOTECA) {
+    if (pacote?.formato === FORMATO_BIBLIOTECA || ehCatalogoBotanico(pacote)) {
         return { projetos: [], biblioteca: await importarBiblioteca(texto) };
     }
 
@@ -137,8 +137,10 @@ export async function importarArquivo(arquivoOuTexto) {
     const especiePorChave = new Map(especiesLocais.map(e => [chaveEspecie(e.nome_popular, e.nome_cientifico), e.id]));
     const especiesPorNome = new Map();
     for (const e of especiesLocais) {
-        const chave = normalizarNome(e.nome_popular);
-        especiesPorNome.set(chave, [...(especiesPorNome.get(chave) ?? []), e.id]);
+        for (const nome of nomesDaEspecie(e)) {
+            const chave = normalizarNome(nome);
+            especiesPorNome.set(chave, [...(especiesPorNome.get(chave) ?? []), e.id]);
+        }
     }
 
     const nomesEmUso = new Set((await plantaTerraDB.listarProjetos()).map(p => p.nome));

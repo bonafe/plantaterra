@@ -1,15 +1,13 @@
 import { plantaTerraDB } from "./plantaterra_db.js";
 import { baixarArquivo } from "./util_arquivo.js";
-import { chaveEspecie, sanearEspecie } from "../dominio/biblioteca_plantas.js";
+import { chaveEspecie, ehCatalogoBotanico, especieDeRegistroCatalogo, normalizarNome, sanearEspecie } from "../dominio/biblioteca_plantas.js";
 
 const FORMATO = "plantaterra-biblioteca";
 const FORMATO_VERSAO = 1;
 
 /** Só os campos de domínio (sem id/datas) — o mesmo formato serve ao arquivo da biblioteca e ao backup completo. */
 export function serializarEspecies(especies) {
-    return especies.map(({ nome_popular, nome_cientifico, ciclo, espacamento_recomendado_m, notas }) => ({
-        nome_popular, nome_cientifico, ciclo, espacamento_recomendado_m, notas
-    }));
+    return especies.map(({ id, criado_em, atualizado_em, ...campos }) => campos);
 }
 
 export async function exportarBiblioteca() {
@@ -41,8 +39,13 @@ export async function importarBiblioteca(arquivoOuTexto) {
         throw new Error("o arquivo não é um JSON válido.");
     }
 
+    // Catálogo botânico agroflorestal (um registro rico por espécie): vira espécies da biblioteca.
+    if (ehCatalogoBotanico(pacote)) {
+        return mesclarEspecies(pacote.plantas.map(especieDeRegistroCatalogo), { porCientifico: true });
+    }
+
     if (pacote?.formato !== FORMATO) {
-        throw new Error("o arquivo não é uma biblioteca de plantas do PlantaTerra.");
+        throw new Error("o arquivo não é uma biblioteca de plantas do PlantaTerra nem um catálogo botânico.");
     }
     if (pacote.formato_versao !== FORMATO_VERSAO) {
         throw new Error(`formato de biblioteca não suportado (versão ${pacote.formato_versao}).`);
@@ -58,9 +61,11 @@ export async function importarBiblioteca(arquivoOuTexto) {
  * Mescla uma lista de espécies (já no formato serializado) ao catálogo local.
  * @returns {{ adicionadas: number, jaExistentes: number, invalidas: number }}
  */
-export async function mesclarEspecies(lista) {
+export async function mesclarEspecies(lista, { porCientifico = false } = {}) {
     const existentes = await plantaTerraDB.listarEspecies();
     const nomesConhecidos = new Set(existentes.map(e => chaveEspecie(e.nome_popular, e.nome_cientifico)));
+    // Importando o catálogo: a mesma espécie (mesmo nome científico) já na biblioteca, com outro nome popular, não duplica.
+    const cientificosConhecidos = new Set(existentes.map(e => normalizarNome(e.nome_cientifico)).filter(Boolean));
 
     const resumo = { adicionadas: 0, jaExistentes: 0, invalidas: 0 };
     for (const bruta of lista) {
@@ -70,12 +75,14 @@ export async function mesclarEspecies(lista) {
             continue;
         }
         const chave = chaveEspecie(especie.nomePopular, especie.nomeCientifico);
-        if (nomesConhecidos.has(chave)) {
+        const cientifico = normalizarNome(especie.nomeCientifico);
+        if (nomesConhecidos.has(chave) || (porCientifico && cientifico && cientificosConhecidos.has(cientifico))) {
             resumo.jaExistentes++;
             continue;
         }
         await plantaTerraDB.criarEspecie(especie);
         nomesConhecidos.add(chave);
+        if (cientifico) cientificosConhecidos.add(cientifico);
         resumo.adicionadas++;
     }
     return resumo;

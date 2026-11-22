@@ -3,7 +3,7 @@ import { descreverIdadePlantio, formatarDataSimples, parsearDataBr } from "./uti
 import { acharPlantaIgual } from "../dominio/saf.js";
 import "./card_planta.js";
 import "./campo_limpavel.js";
-import { normalizarNome, segmentarDestaque } from "../dominio/biblioteca_plantas.js";
+import { nomesDaEspecie, normalizarNome, segmentarDestaque, textosDeBusca } from "../dominio/biblioteca_plantas.js";
 
 /**
  * <dialogo-planta-metro>: diálogo das plantas de um metro de uma linha de
@@ -75,7 +75,7 @@ export class DialogoPlantaMetro extends ReactiveComponent {
     _especieDaPlanta(planta) {
         const porId = this._especies.find(e => e.id === planta.especie_id);
         if (porId) return porId;
-        const porNome = this._especies.filter(e => normalizarNome(e.nome_popular) === normalizarNome(planta.especie));
+        const porNome = this._especies.filter(e => nomesDaEspecie(e).some(nome => normalizarNome(nome) === normalizarNome(planta.especie)));
         return porNome.length === 1 ? porNome[0] : undefined;
     }
 
@@ -190,17 +190,25 @@ export class DialogoPlantaMetro extends ReactiveComponent {
             return;
         }
 
-        const exatas = this._especies.filter(e => normalizarNome(e.nome_popular) === consulta);
-        const comecaCom = e => normalizarNome(e.nome_popular).startsWith(consulta);
+        const exatas = this._especies.filter(e => nomesDaEspecie(e).some(nome => normalizarNome(nome) === consulta));
+        const comecaCom = e => nomesDaEspecie(e).some(nome => normalizarNome(nome).startsWith(consulta));
         const opcoes = !consulta || exatas.length === 1 ? [] : this._especies
-            .filter(e => normalizarNome(e.nome_popular).includes(consulta) || normalizarNome(e.nome_cientifico).includes(consulta))
+            .filter(e => textosDeBusca(e).some(texto => normalizarNome(texto).includes(consulta)))
             .sort((a, b) => Number(comecaCom(b)) - Number(comecaCom(a)))
             .slice(0, 8)
-            .map(e => ({
-                id: e.id,
-                nomeTrechos: segmentarDestaque(e.nome_popular, consulta).map((t, k) => ({ ...t, k })),
-                cienTrechos: segmentarDestaque(e.nome_cientifico ?? "", consulta).map((t, k) => ({ ...t, k }))
-            }));
+            .map(e => {
+                // Achou por outro nome popular? Mostra qual, para a pessoa entender por que a opção apareceu.
+                const alias = normalizarNome(e.nome_popular).includes(consulta)
+                    ? null
+                    : nomesDaEspecie(e).find(nome => normalizarNome(nome).includes(consulta));
+                return {
+                    id: e.id,
+                    nomeTrechos: segmentarDestaque(e.nome_popular, consulta).map((t, k) => ({ ...t, k })),
+                    cienTrechos: segmentarDestaque(e.nome_cientifico ?? "", consulta).map((t, k) => ({ ...t, k })),
+                    semAlias: !alias,
+                    aliasTrechos: alias ? segmentarDestaque(alias, consulta).map((t, k) => ({ ...t, k })) : []
+                };
+            });
         this.state = { ...this.state, opcoes, semOpcoes: opcoes.length === 0, semAviso: !consulta || exatas.length > 0 || opcoes.length > 0 };
     }
 
@@ -245,7 +253,7 @@ export class DialogoPlantaMetro extends ReactiveComponent {
                 const especie = dados.get("especie").trim();
         const chave = normalizarNome(especie);
         // A espécie escolhida na lista vale; senão, o nome só vincula se identifica uma espécie única.
-        const porNome = this._especies.filter(e => normalizarNome(e.nome_popular) === chave);
+        const porNome = this._especies.filter(e => nomesDaEspecie(e).some(nome => normalizarNome(nome) === chave));
         const doCatalogo = this._escolhida && normalizarNome(this._escolhida.nome_popular) === chave
             ? this._escolhida
             : (porNome.length === 1 ? porNome[0] : null);

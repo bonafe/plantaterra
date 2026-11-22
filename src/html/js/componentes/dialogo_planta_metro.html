@@ -22,6 +22,7 @@
                         <button type="button" class="opcao-especie" role="option" data-on='{"click":"escolherOpcao"}'>
                             <strong><template data-for="s in o.nomeTrechos : k"><span data-class='{"destaque-busca":"s.m"}'>{{ s.t }}</span></template></strong>
                             <em><template data-for="s in o.cienTrechos : k"><span data-class='{"destaque-busca":"s.m"}'>{{ s.t }}</span></template></em>
+                            <small class="opcao-alias" data-bind='{"hidden":"o.semAlias"}'>também: <template data-for="s in o.aliasTrechos : k"><span data-class='{"destaque-busca":"s.m"}'>{{ s.t }}</span></template></small>
                         </button>
                     </li>
                 </template>

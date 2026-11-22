@@ -67,7 +67,7 @@ export class CardPlanta extends HTMLElement {
                 <div class="card-planta-corpo">
                     <strong class="card-planta-nome">${comDestaque(nome, destaque)}</strong>
                     ${cientifico ? `<em class="card-planta-cientifico">${comDestaque(cientifico, destaque)}</em>` : ""}
-                    ${linhas.filter(Boolean).map(l => `<span class="card-planta-linha">${escaparHtml(l)}</span>`).join("")}
+                    ${linhas.filter(Boolean).map(l => `<span class="card-planta-linha">${comDestaque(l, destaque)}</span>`).join("")}
                 </div>
                 ${acoes.length ? `<div class="card-planta-acoes">${acoes.map(a =>
                     `<button type="button" class="botao-excluir" data-acao-card="${escaparHtml(a.acao)}" aria-label="${escaparHtml(a.rotulo ?? a.acao)}">${escaparHtml(a.icone ?? "")}</button>`

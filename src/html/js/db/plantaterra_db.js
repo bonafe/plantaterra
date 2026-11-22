@@ -336,7 +336,7 @@ class PlantaTerraDB extends DBBase {
 
     // ---- especie (biblioteca de plantas, global — não pertence a nenhum projeto) ----
 
-    async criarEspecie({ nomePopular, nomeCientifico = null, ciclo = null, espacamentoRecomendadoM = null, notas = null }) {
+    async criarEspecie({ nomePopular, nomeCientifico = null, ciclo = null, espacamentoRecomendadoM = null, notas = null, ...extras }) {
         const agora = Date.now();
         const especie = {
             id: this.gerarId(),
@@ -345,6 +345,8 @@ class PlantaTerraDB extends DBBase {
             ciclo,
             espacamento_recomendado_m: espacamentoRecomendadoM,
             notas,
+            // Campos do catálogo botânico (nomes_populares, familia, origem, ocorrencia_estados…): ver §15.1.
+            ...extras,
             criado_em: agora,
             atualizado_em: agora
         };

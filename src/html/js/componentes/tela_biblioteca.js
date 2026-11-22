@@ -1,8 +1,27 @@
 import { plantaTerraDB } from "../db/plantaterra_db.js";
 import { exportarBiblioteca, importarBiblioteca } from "../db/exportador_biblioteca.js";
-import { CICLOS_ESPECIE, chaveEspecie, normalizarNome } from "../dominio/biblioteca_plantas.js";
+import { CICLOS_ESPECIE, chaveEspecie, nomesDaEspecie, normalizarNome, textosDeBusca } from "../dominio/biblioteca_plantas.js";
+import { ESTADOS_BRASIL } from "../dominio/estados_brasil.js";
 import "./card_planta.js";
 import "./campo_limpavel.js";
+
+/** Outro nome popular (que não o principal) em que a busca bateu, se for o caso. */
+function aliasEncontrado(especie, termo) {
+    if (!termo || normalizarNome(especie.nome_popular).includes(termo)) return null;
+    return nomesDaEspecie(especie).find(nome => normalizarNome(nome).includes(termo)) ?? null;
+}
+
+const NOMES_MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+/** { min, max } → "60 a 90 cm" (ou só um lado); null se vazio. */
+function textoDeFaixa(faixa, unidade) {
+    if (!faixa || (faixa.min == null && faixa.max == null)) return null;
+    const numeros = faixa.min != null && faixa.max != null && faixa.min !== faixa.max
+        ? `${faixa.min} a ${faixa.max}` : `${faixa.min ?? faixa.max}`;
+    return `${numeros} ${unidade}`;
+}
+
+const humanizar = chave => chave.replaceAll("_", " ").replace(/^./, c => c.toUpperCase());
 
 const ROTULO_CICLO = { anual: "Anual", bienal: "Bienal", perene: "Perene" };
 
@@ -43,6 +62,7 @@ export class TelaBiblioteca extends HTMLElement {
                     <h2 class="detalhe-nome"></h2>
                     <p class="detalhe-cientifico"></p>
                     <dl class="detalhe-lista"></dl>
+                    <div class="detalhe-extras"></div>
                     <div class="acoes-formulario">
                         <button type="button" class="botao-primario" data-acao="editar-detalhe">Editar</button>
                         <button type="button" data-acao="remover-detalhe">Remover</button>
@@ -58,6 +78,9 @@ export class TelaBiblioteca extends HTMLElement {
                         </label>
                         <label>Nome científico (opcional)
                             <input type="text" name="nome_cientifico" maxlength="120" />
+                        </label>
+                        <label>Outros nomes populares (opcional, separados por vírgula)
+                            <input type="text" name="outros_nomes" maxlength="300" />
                         </label>
                         <label>Ciclo (opcional)
                             <select name="ciclo">
@@ -155,8 +178,9 @@ export class TelaBiblioteca extends HTMLElement {
 
     _renderizarLista() {
         const termo = normalizarNome(this.campoBusca.value);
+        // Procura em todos os nomes populares, no nome científico e nos sinônimos.
         const visiveis = this._especies.filter(e =>
-            !termo || normalizarNome(`${e.nome_popular} ${e.nome_cientifico ?? ""}`).includes(termo));
+            !termo || textosDeBusca(e).some(texto => normalizarNome(texto).includes(termo)));
 
         if (this._especies.length === 0) {
             this.listaElemento.innerHTML = `<li class="lista-vazia">Nenhuma espécie ainda. Cadastre a primeira ou importe um catálogo.</li>`;
@@ -176,6 +200,9 @@ export class TelaBiblioteca extends HTMLElement {
                 nome: especie.nome_popular,
                 cientifico: especie.nome_cientifico ?? "",
                 linhas: [
+                    // Achou por outro nome popular? Mostra qual.
+                    aliasEncontrado(especie, termo) ? `também: ${aliasEncontrado(especie, termo)}` : "",
+                    [especie.familia, especie.forma_de_vida].filter(Boolean).join(" · "),
                     [especie.ciclo ? ROTULO_CICLO[especie.ciclo] : null,
                         especie.espacamento_recomendado_m ? `espaçamento ${especie.espacamento_recomendado_m.toLocaleString("pt-BR")} m` : null]
                         .filter(Boolean).join(" · "),
@@ -198,20 +225,95 @@ export class TelaBiblioteca extends HTMLElement {
             em.textContent = especie.nome_cientifico;
             this.querySelector(".detalhe-cientifico").append(em);
         }
+        const altura = especie.altura_min_m && especie.altura_max_m
+            ? (especie.altura_min_m === especie.altura_max_m ? `${especie.altura_min_m} m` : `${especie.altura_min_m} a ${especie.altura_max_m} m`)
+            : (especie.altura_max_m ?? especie.altura_min_m ? `${especie.altura_max_m ?? especie.altura_min_m} m` : null);
+        const estados = (especie.ocorrencia_estados ?? [])
+            .map(uf => ESTADOS_BRASIL.find(e => e.uf === uf)?.nome ?? uf).join(", ");
+        const lista = (valores) => (valores?.length ? valores.join(", ") : null);
         const itens = [
+            ["Outros nomes populares", lista(nomesDaEspecie(especie).slice(1))],
+            ["Família", especie.familia],
+            ["Autoria", especie.autoria],
+            ["Sinônimos", lista(especie.sinonimos)],
+            ["Origem", especie.origem],
+            ["Forma de vida", especie.forma_de_vida],
+            ["Altura", altura],
+            ["Estrato sugerido no SAF", especie.estrato_saf],
+            ["Exigência de luz", especie.exigencia_luminosa],
+            ["Funções no SAF", lista(especie.funcoes?.map(f => f.replaceAll("_", " ")))],
+            ["Partes utilizadas", lista(especie.partes_utilizadas)],
+            ["Usos", lista(especie.usos)],
             ["Ciclo", especie.ciclo ? ROTULO_CICLO[especie.ciclo] : null],
             ["Espaçamento recomendado", especie.espacamento_recomendado_m ? `${especie.espacamento_recomendado_m.toLocaleString("pt-BR")} m` : null],
-            ["Notas", especie.notas]
+            ["Observação sobre a altura", especie.altura_observacao],
+            ["Diâmetro do tronco", textoDeFaixa(especie.diametro_tronco_cm, "cm")],
+            ["Densidade da madeira", especie.densidade_madeira_g_cm3 ? `${especie.densidade_madeira_g_cm3.toLocaleString("pt-BR")} g/cm³` : null],
+            ["Floração", especie.floracao_meses?.length ? especie.floracao_meses.map(m => NOMES_MESES[m - 1]).join(", ") : null],
+            ["Frutificação", especie.frutificacao_meses?.length ? especie.frutificacao_meses.map(m => NOMES_MESES[m - 1]).join(", ") : null],
+            ["Sementes por kg (aprox.)", especie.sementes_por_kg ? especie.sementes_por_kg.toLocaleString("pt-BR") : null],
+            ["Viabilidade das sementes armazenadas", especie.viabilidade_sementes ? `${especie.viabilidade_sementes} meses` : null],
+            ["Taxa de germinação", especie.taxa_germinacao],
+            ["Emergência das plântulas", textoDeFaixa(especie.emergencia_dias, "dias")],
+            ["Germinação", textoDeFaixa(especie.germinacao_meses, "meses")],
+            ["Mudas prontas em", textoDeFaixa(especie.mudas_prontas_meses, "meses")],
+            ["Atenção à conservação", especie.advertencia_conservacao],
+            ["Subfamília", especie.subfamilia],
+            ["Taxonomia alternativa", especie.taxonomia_alternativa],
+            ["Exsicata / referência botânica", especie.referencia_botanica],
+            ["Ocorrência", especie.ocorrencia_texto],
+            ["Precisão da ocorrência", especie.ocorrencia_precisao],
+            ["Estados citados", estados || null],
+            ["Notas", especie.notas],
+            ["Fonte no livro", especie.fonte_primaria
+                ? [especie.fonte_primaria.pagina ? `página ${especie.fonte_primaria.pagina}` : null, especie.fonte_primaria.titulo_da_obra, especie.fonte_primaria.nota].filter(Boolean).join(" — ")
+                : null],
+            // Dados que o catálogo trouxe e o app ainda não conhece: aparecem como vieram.
+            ...Object.entries(especie.extras ?? {}).map(([chave, valor]) =>
+                [humanizar(chave.split(".").pop()), typeof valor === "string" ? valor : JSON.stringify(valor)])
         ].filter(([, valor]) => valor);
-        const lista = this.querySelector(".detalhe-lista");
-        lista.replaceChildren(...itens.flatMap(([rotulo, valor]) => {
+        const listaElemento = this.querySelector(".detalhe-lista");
+        listaElemento.replaceChildren(...itens.flatMap(([rotulo, valor]) => {
             const dt = document.createElement("dt");
             dt.textContent = rotulo;
             const dd = document.createElement("dd");
             dd.textContent = valor;
             return [dt, dd];
         }));
+
+        // Descrições longas ficam recolhidas, para o detalhe não virar uma parede de texto.
+        const ROTULO_SECAO = { morfologia: "Características", madeira: "Madeira", utilidade: "Utilidade", ecologia: "Ecologia",
+            fenologia: "Floração e frutificação", sementes: "Obtenção de sementes", mudas: "Produção de mudas" };
+        // Seções conhecidas primeiro; qualquer outra que o catálogo traga vem depois, com o nome que veio.
+        const chavesSecao = [...Object.keys(ROTULO_SECAO), ...Object.keys(especie.detalhes ?? {}).filter(c => !(c in ROTULO_SECAO))];
+        const secoes = chavesSecao.filter(chave => especie.detalhes?.[chave]).map(chave => {
+            const detalhes = document.createElement("details");
+            const resumo = document.createElement("summary");
+            resumo.textContent = ROTULO_SECAO[chave] ?? humanizar(chave);
+            const texto = document.createElement("p");
+            texto.textContent = especie.detalhes[chave];
+            detalhes.append(resumo, texto);
+            return detalhes;
+        });
+        const extras = this.querySelector(".detalhe-extras");
+        extras.replaceChildren(...secoes);
+        if (especie.fontes?.length) {
+            const paragrafo = document.createElement("p");
+            paragrafo.className = "detalhe-fontes";
+            paragrafo.append("Fontes: ");
+            especie.fontes.forEach((url, i) => {
+                const link = document.createElement("a");
+                link.href = url;
+                link.target = "_blank";
+                link.rel = "noopener";
+                link.textContent = url.replace(/^https?:\/\//, "").slice(0, 60);
+                if (i) paragrafo.append(" · ");
+                paragrafo.append(link);
+            });
+            extras.append(paragrafo);
+        }
         this.dialogoDetalhe.showModal();
+        this.dialogoDetalhe.scrollTop = 0;
     }
 
     _abrirDialogo(especie) {
@@ -222,6 +324,7 @@ export class TelaBiblioteca extends HTMLElement {
         if (especie) {
             this.formulario.nome_popular.value = especie.nome_popular;
             this.formulario.nome_cientifico.value = especie.nome_cientifico ?? "";
+            this.formulario.outros_nomes.value = nomesDaEspecie(especie).slice(1).join(", ");
             this.formulario.ciclo.value = especie.ciclo ?? "";
             this.formulario.espacamento.value = especie.espacamento_recomendado_m ?? "";
             this.formulario.notas.value = especie.notas ?? "";
@@ -242,7 +345,9 @@ export class TelaBiblioteca extends HTMLElement {
             nomeCientifico: dados.get("nome_cientifico").trim() || null,
             ciclo: dados.get("ciclo") || null,
             espacamentoRecomendadoM: espacamento,
-            notas: dados.get("notas").trim() || null
+            notas: dados.get("notas").trim() || null,
+            // O nome principal é sempre o primeiro; os outros vêm do campo "outros nomes", sem repetir.
+            nomes_populares: [...new Set([nomePopular, ...dados.get("outros_nomes").split(",").map(n => n.trim()).filter(Boolean)])]
         };
 
         // O mesmo nome popular pode ser de espécies diferentes: só repetir popular E científico é duplicata.
@@ -261,7 +366,8 @@ export class TelaBiblioteca extends HTMLElement {
                 nome_cientifico: campos.nomeCientifico,
                 ciclo: campos.ciclo,
                 espacamento_recomendado_m: campos.espacamentoRecomendadoM,
-                notas: campos.notas
+                notas: campos.notas,
+                nomes_populares: campos.nomes_populares
             });
         } else {
             await plantaTerraDB.criarEspecie(campos);
