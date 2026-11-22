@@ -453,6 +453,21 @@ painel-projeto.vista-saf-ativa.mapa-ampliado .mapa-caixa {
     font-size: 0.9rem;
 }
 
+matriz-saf {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+andar-gps {
+    display: block;
+}
+
+andar-gps[hidden] {
+    display: none;
+}
+
 .matriz-saf-wrapper {
     flex: 1 1 auto;
     min-height: 0;

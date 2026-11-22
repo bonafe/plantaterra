@@ -425,6 +425,14 @@ Ao abrir um projeto, a tela de entrada mostra o **mapa da propriedade inteira** 
 - A vista SAF contém "Importar KMZ/KML", as abas Atual/Andar (§14.9), o seletor de SAF e a matriz.
 - **Último lugar:** `localStorage["plantaterra:ultimo-lugar"]` guarda `{projetoId, vista, safId}`. Ao abrir o app (não a cada volta à lista) ele vai direto a esse projeto e vista, e ao SAF que estava aberto; "←" na entrada de um projeto apaga a memória. O Andar nunca reinicia sozinho (o GPS só liga por toque).
 
+### 14.11 Componentes da vista SAF (contrato)
+
+A vista SAF é composta por componentes independentes, ligados pelo `painel_projeto.js`. Eles não importam banco nem mapa, e não se conhecem — para poderem ser reaproveitados (a intenção é virarem componentes do UltimaJS).
+
+- **`<matriz-saf>`** (`componentes/matriz_saf.js`): entrada `definir({matriz, plantasPorLinha})`, `limpar()`, `marcarProximos(chaves, chaveMaisProximo)`, `rolarPara(chave)`, `modoAndar`; eventos `metro-tocado {linhaId, indiceMetro, coordenada}` e `controle-assumido`.
+- **`<andar-gps>`** (`componentes/andar_gps.js`): entrada `quadrados`, `iniciar()`, `parar()`, `assumirControle()`, `ativo`, `seguindo`; eventos `posicao {posicao, proximos, maisProximo, distanciaM, seguindo, atuando, centralizar, primeiroSinal}`, `rumo {graus}` e `rumo-ativo {ativo}`.
+- Quem orquestra (`painel_projeto.js#_wireVistaSaf`) traduz eventos em ações no mapa, na matriz e na escolha do SAF.
+
 ## 15. Roadmap de fases futuras (fora de escopo desta implementação)
 
 Estas fases reaproveitam `planta_linha` como núcleo, então são descritas aqui para guiar decisões de modelo de dados desde já (evitar retrabalho), mas **não fazem parte da implementação atual**:
