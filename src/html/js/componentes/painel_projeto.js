@@ -22,6 +22,7 @@ import "./captura_gps.js";
 import "./matriz_saf.js";
 import "./andar_gps.js";
 import "./dialogo_planta_metro.js";
+import "./editor_pontos_trilha.js";
 
 const CHAVE_ULTIMO_LUGAR = "plantaterra:ultimo-lugar";
 
@@ -147,19 +148,7 @@ export class PainelProjeto extends HTMLElement {
                     </section>
                 </div>
 
-                <div class="editor-pontos-trilha" hidden>
-                    <p class="editar-pontos-status"></p>
-                    <p class="editar-pontos-detalhe" hidden></p>
-                    <div class="acoes-formulario">
-                        <button type="button" class="botao-secundario" data-acao="excluir-ponto-selecionado" hidden>
-                            Excluir ponto selecionado 🗑
-                        </button>
-                    </div>
-                    <div class="acoes-formulario">
-                        <button type="button" class="botao-primario" data-acao="salvar-edicao-pontos">Salvar alterações</button>
-                        <button type="button" data-acao="fechar-editar-pontos">Fechar</button>
-                    </div>
-                </div>
+                <editor-pontos-trilha></editor-pontos-trilha>
 
                 <captura-gps></captura-gps>
                 <dialog class="dialogo-caminhada">
@@ -570,47 +559,46 @@ export class PainelProjeto extends HTMLElement {
      * ponto no mapa em gradiente (azul = mais antigo, vermelho = mais
      * recente), permite selecionar um ponto clicando nele e excluí-lo, e só
      * grava no banco (recalculando o polígono) quando o usuário confirma.
+     * O estado da edição vive no <editor-pontos-trilha>; aqui ficam o mapa,
+     * a validação do polígono e o banco.
      */
     _wireEditorPontosTrilha() {
-        const painel = this.querySelector(".editor-pontos-trilha");
-        const status = this.querySelector(".editar-pontos-status");
-        const detalhe = this.querySelector(".editar-pontos-detalhe");
-        const botaoExcluirPonto = this.querySelector('[data-acao="excluir-ponto-selecionado"]');
+        const editor = this.querySelector("editor-pontos-trilha");
+        this._editorPontos = editor;
 
         this.mapaElemento.addEventListener("ponto-trilha-clicado", evento => {
-            if (!this._edicaoPontos) return;
-            this._edicaoPontos.indiceSelecionado = evento.detail.indice;
-            this._renderizarEditorPontosTrilha();
+            editor.selecionarPonto(evento.detail.indice);
         });
 
-        botaoExcluirPonto.addEventListener("click", () => {
-            const estado = this._edicaoPontos;
-            if (!estado || estado.indiceSelecionado === null) return;
-            estado.pontos.splice(estado.indiceSelecionado, 1);
-            estado.indiceSelecionado = null;
-            estado.alterado = true;
-            this._renderizarEditorPontosTrilha();
-        });
-
-        this.querySelector('[data-acao="fechar-editar-pontos"]').addEventListener("click", () => {
-            if (this._edicaoPontos?.alterado && !confirm("Descartar as alterações feitas nos pontos desta rodada?")) {
-                return;
+        editor.addEventListener("pontos-mudaram", evento => {
+            const { pontos, indiceSelecionado, tMin, tMax, primeira } = evento.detail;
+            this.mapaElemento.exibirPontosTrilhaEditavel(pontos, { indiceSelecionado, tMin, tMax, ajustarZoom: primeira });
+            if (this.projeto.terreno_convexo) {
+                this.mapaElemento.definirPreviaPoligono(calcularCascoConvexo(pontos));
+            } else {
+                this.mapaElemento.limparPreviaPoligono();
             }
-            this._fecharEditorPontosTrilha();
         });
 
-        this.querySelector('[data-acao="salvar-edicao-pontos"]').addEventListener("click", async () => {
-            const estado = this._edicaoPontos;
-            if (!estado) return;
+        editor.addEventListener("fechado", () => {
+            this.mapaElemento.limparPreviaPoligono();
+            this.mapaElemento.limparPontosTrilhaEditavel();
+            this.querySelector(".painel-inferior").hidden = false;
+            this.mapaElemento.invalidarTamanho();
+            this.mapaElemento.ajustarZoomParaConteudo();
+        });
 
-            if (estado.pontos.length < 3) {
+        editor.addEventListener("salvar-solicitado", async evento => {
+            const { pontos } = evento.detail;
+
+            if (pontos.length < 3) {
                 alert("É preciso manter pelo menos 3 pontos para formar um perímetro.");
                 return;
             }
 
             const poligono = this.projeto.terreno_convexo
-                ? calcularCascoConvexo(estado.pontos)
-                : simplificarTrilha(estado.pontos);
+                ? calcularCascoConvexo(pontos)
+                : simplificarTrilha(pontos);
 
             if (poligono.length < 3) {
                 alert("Poucos pontos restantes para formar um perímetro. Não é possível salvar.");
@@ -628,78 +616,23 @@ export class PainelProjeto extends HTMLElement {
                 }
             }
 
-            const trilha = await plantaTerraDB.obterTrilha(estado.trilhaId);
-            await plantaTerraDB.salvarTrilha({ ...trilha, pontos_brutos: estado.pontos, poligono });
+            const trilha = await plantaTerraDB.obterTrilha(this._trilhaEmEdicaoId);
+            await plantaTerraDB.salvarTrilha({ ...trilha, pontos_brutos: pontos, poligono });
 
-            this._fecharEditorPontosTrilha();
+            editor.fechar();
             await this._renderizarHistoricoPerimetro();
             await this.recarregarTudo();
         });
-
-        this._editorPontosPainel = painel;
-        this._editorPontosStatus = status;
-        this._editorPontosDetalhe = detalhe;
-        this._editorPontosBotaoExcluir = botaoExcluirPonto;
     }
 
     _abrirEditorPontosTrilha(trilha) {
-        const pontos = trilha.pontos_brutos ?? [];
-        this._edicaoPontos = {
-            trilhaId: trilha.id,
-            tMin: pontos[0]?.timestamp,
-            tMax: pontos[pontos.length - 1]?.timestamp,
-            pontos: pontos.slice(),
-            indiceSelecionado: null,
-            alterado: false
-        };
+        this._trilhaEmEdicaoId = trilha.id;
         // Modo de tela cheia: esconde as demais seções (não fica só visualmente
         // por trás — ficavam clicáveis também) e o mapa cresce para ocupar
         // quase toda a tela, dando espaço de verdade para tocar nos pontos.
         this.querySelector(".painel-inferior").hidden = true;
-        this._editorPontosPainel.hidden = false;
         this.mapaElemento.invalidarTamanho();
-
-        this._renderizarEditorPontosTrilha({ ajustarZoom: true });
-    }
-
-    _renderizarEditorPontosTrilha({ ajustarZoom = false } = {}) {
-        const estado = this._edicaoPontos;
-        if (!estado) return;
-
-        this._editorPontosStatus.textContent =
-            `${estado.pontos.length} pontos — toque em um ponto no mapa para selecioná-lo.`;
-
-        this.mapaElemento.exibirPontosTrilhaEditavel(estado.pontos, {
-            indiceSelecionado: estado.indiceSelecionado,
-            tMin: estado.tMin,
-            tMax: estado.tMax,
-            ajustarZoom
-        });
-
-        const ponto = estado.indiceSelecionado !== null ? estado.pontos[estado.indiceSelecionado] : null;
-        this._editorPontosDetalhe.hidden = !ponto;
-        this._editorPontosBotaoExcluir.hidden = !ponto;
-        if (ponto) {
-            const precisao = ponto.precisao != null ? `${ponto.precisao.toFixed(0)} m` : "desconhecida";
-            this._editorPontosDetalhe.textContent = `Ponto selecionado: ${formatarData(ponto.timestamp)} — precisão ${precisao}`;
-        }
-
-        if (this.projeto.terreno_convexo) {
-            this.mapaElemento.definirPreviaPoligono(calcularCascoConvexo(estado.pontos));
-        } else {
-            this.mapaElemento.limparPreviaPoligono();
-        }
-    }
-
-    _fecharEditorPontosTrilha() {
-        this._edicaoPontos = null;
-        this.mapaElemento.limparPreviaPoligono();
-        this.mapaElemento.limparPontosTrilhaEditavel();
-
-        this._editorPontosPainel.hidden = true;
-        this.querySelector(".painel-inferior").hidden = false;
-        this.mapaElemento.invalidarTamanho();
-        this.mapaElemento.ajustarZoomParaConteudo();
+        this._editorPontos.abrir({ pontos: trilha.pontos_brutos ?? [] });
     }
 
     // ---------------- Estações e leituras ----------------

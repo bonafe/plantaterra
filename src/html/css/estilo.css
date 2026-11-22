@@ -783,7 +783,12 @@ dialog.dialogo-planta-metro::backdrop {
  * como uma faixa fixa e compacta embaixo dele, empilhada normalmente no
  * layout — sem position:fixed, sem disputa de z-index com o Leaflet.
  */
+editor-pontos-trilha[hidden] {
+    display: none;
+}
+
 .editor-pontos-trilha {
+    display: block;
     flex: 0 0 auto;
     max-height: 40dvh;
     overflow-y: auto;
