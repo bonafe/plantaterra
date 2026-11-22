@@ -580,7 +580,26 @@ export class MapaProjeto extends HTMLElement {
         });
     }
 
-    ajustarZoomParaConteudo() {
+    /**
+     * Retângulo (lat/lon) que cobre os pontos mais distantes do conteúdo da propriedade
+     * (perímetros, estações/leituras, curvas, linhas de SAF; o contexto só se não houver mais nada).
+     * Devolve { sul, oeste, norte, leste } ou null se o mapa está vazio.
+     */
+    extensaoDoConteudo() {
+        const extensao = this._extensaoConteudo();
+        if (ol.extent.isEmpty(extensao)) return null;
+        const [oeste, sul] = ol.proj.toLonLat([extensao[0], extensao[1]]);
+        const [leste, norte] = ol.proj.toLonLat([extensao[2], extensao[3]]);
+        return { sul, oeste, norte, leste };
+    }
+
+    /** Enquadra um retângulo { sul, oeste, norte, leste } já conhecido (ex: o gravado no projeto), no maior zoom em que cabe. */
+    enquadrarExtensao({ sul, oeste, norte, leste }) {
+        this._enquadrar(ol.extent.boundingExtent([paraMapa(sul, oeste), paraMapa(norte, leste)]), 30);
+        this._centralizadoAutomaticamente = true;
+    }
+
+    _extensaoConteudo() {
         const extensao = ol.extent.createEmpty();
         [this.camadaPerimetro, this.camadaLeituras, this.camadaIsolinhas, this.camadaLinhasSaf].forEach(fonte => {
             if (fonte.getFeatures().length > 0) ol.extent.extend(extensao, fonte.getExtent());
@@ -589,6 +608,11 @@ export class MapaProjeto extends HTMLElement {
             //Sem perímetro nem leituras: o contexto (KMZ importado) ainda diz onde fica a propriedade
             if (this.camadaContexto.getFeatures().length > 0) ol.extent.extend(extensao, this.camadaContexto.getExtent());
         }
+        return extensao;
+    }
+
+    ajustarZoomParaConteudo() {
+        const extensao = this._extensaoConteudo();
         if (!ol.extent.isEmpty(extensao)) {
             this._enquadrar(extensao, 30);
             //Enquadrou a propriedade inteira: a posição do GPS, que chega depois, não pode sobrescrever

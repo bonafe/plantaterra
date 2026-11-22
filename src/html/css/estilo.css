@@ -1229,27 +1229,70 @@ dialog.dialogo-planta-metro[open] {
     border-top: 1px solid var(--cor-borda);
 }
 
-/* Cabeçalho do painel: seta "←" para voltar, como no resto do app. */
-.planta-metro-cabecalho {
+
+/* Migalhas do cabeçalho do projeto: "Projeto / Agrofloresta / SAF / Linha X · metro N" */
+.cabecalho-linha {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: 12px;
 }
 
-.planta-metro-cabecalho .botao-voltar {
-    flex: 0 0 auto;
-    min-width: 44px;
-    min-height: 44px;
-    color: var(--cor-texto);
-}
-
-dialog.dialogo-planta-metro .planta-metro-titulo {
+.cabecalho-linha h1 {
     margin: 0;
+}
+
+.cabecalho-projeto .botao-voltar {
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.migalhas {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+    font-size: 0.95rem;
+}
+
+.migalhas::-webkit-scrollbar {
+    display: none;
+}
+
+.migalha {
+    flex: 0 1 auto;
+    min-height: 40px;
+    padding: 0 6px;
+    border: none;
+    background: transparent;
+    font: inherit;
+    color: var(--cor-texto-suave);
+    display: inline-flex;
+    align-items: center;
+    max-width: 45vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+button.migalha {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: var(--cor-borda);
+}
+
+.migalha-atual {
+    flex: 0 0 auto;
+    color: var(--cor-texto);
+    font-weight: 700;
     font-size: 1.05rem;
 }
 
-/* O navegador foca o primeiro botão ao abrir o painel; sem isso a seta aparece com contorno. */
-.planta-metro-cabecalho .botao-voltar:focus {
-    outline: none;
+.migalha-separador {
+    color: var(--cor-texto-suave);
 }

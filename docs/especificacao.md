@@ -128,6 +128,7 @@ Um único banco `PlantaTerraDB`, com as seguintes object stores:
   nome: string,
   descricao: string,
   terreno_convexo: boolean,   // ver secao 6.1 — fecha o perimetro por casco convexo em vez de Douglas-Peucker
+  extensao_propriedade: { sul, oeste, norte, leste } | null,  // retangulo lat/lon com os pontos mais distantes (perimetros, estacoes, SAF, contexto); regravado quando o conteudo muda e usado para enquadrar a propriedade inteira (maior zoom em que cabe) ao abrir o projeto
   criado_em: timestamp,
   atualizado_em: timestamp
 }
@@ -409,7 +410,7 @@ O "Andar" não é mais uma tela de mapa cheio: é um **modo da vista SAF** (§14
 - **Abas "Atual" | "📍 Andar".** "Atual" é só a matriz. "📍 Andar" liga o GPS (`watchPosition`, `enableHighAccuracy`, direto — sem a estabilização do §5) e mostra uma faixa de estado. Voltar a "Atual" desliga GPS e giro.
 - **O GPS guia:** a cada posição, marca na matriz os metros dentro do raio de busca (`geo/proximidade_metros.js`, raio 3–12 m conforme a precisão; borda azul) e o mais próximo (amarelo); se a pessoa está a ≤ 25 m de alguma fileira, **troca sozinho para o SAF dela e rola a matriz** até centralizar o metro mais próximo. Mais longe que isso a faixa avisa a distância e nada rola. Acima de 15 m de imprecisão avisa "sinal fraco".
 - **A pessoa pode pegar o controle:** tocar/rolar a matriz, trocar de SAF, tocar numa célula ou arrastar o mapa pausa a guia (a faixa fica amarela: "Você está no controle") — as marcações continuam atualizando, mas nada rola nem troca. "🎯 Voltar a seguir" retoma na hora.
-- **Tocar numa célula** (em qualquer modo) abre o diálogo de planta (§14.6) e leva o mapa àquele metro: marcador amarelo com o rótulo **"SAF · Linha X · metro N"** e zoom mínimo 21 (nunca afasta), para a pessoa se situar no campo. É o **modo foco**: o mapa **mantém o tamanho** da vista SAF (≈24% da altura, para sobrar espaço aos dados da planta), a matriz some e o painel de plantas ocupa o resto da tela, **sem cobrir o mapa** (o `<dialogo-planta-metro>` é não modal — `show()`, no fluxo da tela, não `showModal()`); a seta **"←"** no cabeçalho do painel (como no resto do app; não há botão "Fechar") devolve o layout normal (e, se o GPS estava guiando, a matriz volta rolada para o metro mais próximo). A célula tocada fica com contorno marcado. Metros próximos também aparecem como bolinhas no mapa; tocar numa abre o mesmo diálogo.
+- **Tocar numa célula** (em qualquer modo) abre o diálogo de planta (§14.6) e leva o mapa àquele metro: marcador amarelo com o rótulo **"SAF · Linha X · metro N"** e zoom mínimo 21 (nunca afasta), para a pessoa se situar no campo. É o **modo foco**: o mapa **mantém o tamanho** da vista SAF (≈24% da altura, para sobrar espaço aos dados da planta), a matriz some e o painel de plantas ocupa o resto da tela, **sem cobrir o mapa** (o `<dialogo-planta-metro>` é não modal — `show()`, no fluxo da tela, não `showModal()`); a seta **"←"** do cabeçalho do projeto (o painel não tem cabeçalho nem título próprios; quem situa a pessoa são as migalhas, abaixo) devolve o layout normal (e, se o GPS estava guiando, a matriz volta rolada para o metro mais próximo). A célula tocada fica com contorno marcado. Metros próximos também aparecem como bolinhas no mapa; tocar numa abre o mesmo diálogo.
 - **Mapa:** ponto azul com círculo de precisão; primeiro sinal aproxima ao zoom 21; depois vale o zoom da pessoa. Adicionar planta não reenquadra o mapa.
 - **"🧭 Girar com você" (frente para cima)** — botão 🧭 de 44 px na faixa do Andar, desligado por padrão; aceso (azul) quando ligado. O texto de explicação só aparece quando falta bússola ou enquanto ela é procurada.
   - **Fonte do rumo:** bússola do aparelho (`gps/captador_rumo.js`, `DeviceOrientation`; Android `deviceorientationabsolute`; iOS pede permissão dentro do toque do botão). Rumo com compensação de inclinação (`geo/rumo.js#calcularRumoBussola`) e da tela girada.
@@ -533,3 +534,10 @@ docs/
 10. Exportação GeoJSON/KML para GIS (§8, formatos além do backup).
 11. Importação de KMZ/KML de SAF/linhas de plantio, segmentação em metros, cadastro de plantas por metro, e exportação unificada em KMZ (§14).
 12. Polimento de UI mobile (contraste, botões, feedback de GPS).
+
+
+### Navegação: seta para a landing e migalhas (breadcrumbs)
+
+- A lista de projetos tem a seta **"←"** que volta para a landing page (`../../` a partir de `src/html/`).
+- O cabeçalho do projeto mostra migalhas no lugar do título: **"← Projeto / Agrofloresta / [SAF selecionado] / Linha X · metro N"** (nas vistas de perímetro e estações: "Projeto / Perímetro"). Cada trecho, exceto o último, é tocável e volta àquele nível ("Projeto" → tela de entrada; os demais fecham o painel de plantas). A seta "←" continua subindo um nível por vez. Por isso o painel de plantas não tem seta nem título próprios (economiza altura).
+- Ao abrir o projeto, o mapa enquadra a propriedade inteira usando `projeto.extensao_propriedade` (§8), sem esperar as camadas carregarem.

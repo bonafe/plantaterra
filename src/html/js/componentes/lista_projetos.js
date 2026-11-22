@@ -11,7 +11,10 @@ export class ListaProjetos extends HTMLElement {
         this.innerHTML = `
             <div class="tela-lista-projetos">
                 <header class="cabecalho-app">
-                    <h1>PlantaTerra</h1>
+                    <div class="cabecalho-linha">
+                        <a href="../../" class="botao-voltar" aria-label="Voltar para a página inicial">←</a>
+                        <h1>PlantaTerra</h1>
+                    </div>
                     <p class="subtitulo">Curva de nível e perímetro de propriedades</p>
                 </header>
 

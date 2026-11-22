@@ -50,7 +50,7 @@ export class PainelProjeto extends HTMLElement {
             <div class="tela-painel-projeto">
                 <header class="cabecalho-app cabecalho-projeto">
                     <a href="#/" class="botao-voltar" aria-label="Voltar">←</a>
-                    <h1>${escaparHtml(this.projeto.nome)}</h1>
+                    <nav class="migalhas" aria-label="Você está em"></nav>
                     <button type="button" data-acao="abrir-menu" class="botao-icone" aria-label="Menu do projeto" aria-haspopup="true" aria-expanded="false">⋮</button>
                     <nav class="menu-projeto" hidden>
                         <p class="menu-projeto-titulo">Exportar</p>
@@ -188,6 +188,10 @@ export class PainelProjeto extends HTMLElement {
         this._wireSaf();
         this._wireVistaSaf();
         this._wireNavegacao();
+        this._renderizarMigalhas();
+
+        // A propriedade inteira já na abertura: usa o retângulo gravado, sem esperar as camadas carregarem.
+        if (this.projeto.extensao_propriedade) this.mapaElemento.enquadrarExtensao(this.projeto.extensao_propriedade);
 
         await this.recarregarTudo();
 
@@ -222,6 +226,7 @@ export class PainelProjeto extends HTMLElement {
         this.mapaElemento.definirLinhasSaf(safsComLinhas);
         // Na vista SAF o mapa acompanha a fileira/a pessoa: não reenquadra tudo a cada recarga.
         if (this._vista !== "saf") this.mapaElemento.ajustarZoomParaConteudo();
+        await this._atualizarExtensaoPropriedade();
 
         const areaElemento = this.querySelector(".area-perimetro");
         areaElemento.textContent = trilhaAtiva?.poligono?.length >= 3
@@ -231,6 +236,48 @@ export class PainelProjeto extends HTMLElement {
         this._renderizarListaEstacoes();
         this._atualizarResumos();
         if (this._vista === "saf") await this._recarregarVistaSaf();
+    }
+
+    /**
+     * Mantém em projeto.extensao_propriedade o retângulo que cobre os pontos mais distantes
+     * (perímetro, estações, SAF, contexto): é o que enquadra a propriedade inteira ao abrir o projeto.
+     * Só grava quando muda (docs/especificacao.md §8).
+     */
+    async _atualizarExtensaoPropriedade() {
+        const nova = this.mapaElemento.extensaoDoConteudo();
+        if (!nova) return;
+        const antiga = this.projeto.extensao_propriedade;
+        const igual = antiga && ["sul", "oeste", "norte", "leste"].every(k => Math.abs(antiga[k] - nova[k]) < 1e-7);
+        if (igual) return;
+        this.projeto = await plantaTerraDB.salvar("projeto", { ...this.projeto, extensao_propriedade: nova });
+    }
+
+    // ---------------- Migalhas (breadcrumbs) ----------------
+
+    static NOMES_VISTA = { perimetro: "Perímetro", estacoes: "Estações de nível", saf: "Agrofloresta" };
+
+    /**
+     * Cabeçalho "← Projeto / Agrofloresta / SAF / Linha X · metro N": mostra onde a pessoa está e
+     * cada trecho (menos o último) leva de volta àquele nível.
+     */
+    _renderizarMigalhas() {
+        const nav = this.querySelector(".migalhas");
+        if (!nav) return;
+        const trechos = [{ texto: this.projeto.nome, nivel: "projeto" }];
+        if (this._vista !== "entrada") {
+            trechos.push({ texto: PainelProjeto.NOMES_VISTA[this._vista], nivel: "vista" });
+            if (this._vista === "saf") {
+                const safAtual = this._dadosSaf?.find(d => d.saf.id === this._safAtualId)?.saf;
+                if (safAtual) trechos.push({ texto: safAtual.nome, nivel: "saf" });
+                if (this._rotuloMetroAberto && this.querySelector("dialogo-planta-metro")?.aberto) {
+                    trechos.push({ texto: this._rotuloMetroAberto, nivel: "metro" });
+                }
+            }
+        }
+        nav.innerHTML = trechos.map((t, i) => i === trechos.length - 1
+            ? `<span class="migalha migalha-atual" aria-current="page">${escaparHtml(t.texto)}</span>`
+            : `<button type="button" class="migalha" data-nivel="${t.nivel}">${escaparHtml(t.texto)}</button><span class="migalha-separador" aria-hidden="true">/</span>`
+        ).join("");
     }
 
     // ---------------- Exportar ----------------
@@ -717,6 +764,7 @@ export class PainelProjeto extends HTMLElement {
                 this.mapaElemento.ajustarZoomParaConteudo();
             }
             this._lembrarLugar();
+            this._renderizarMigalhas();
         };
 
         this._definirMapaAmpliado = ampliado => {
@@ -729,6 +777,14 @@ export class PainelProjeto extends HTMLElement {
 
         botaoAmpliar.addEventListener("click", () => {
             this._definirMapaAmpliado(!this.classList.contains("mapa-ampliado"));
+        });
+
+        // Migalhas: "projeto" volta à entrada; os demais níveis só fecham o painel de plantas (se aberto).
+        this.querySelector(".migalhas").addEventListener("click", evento => {
+            const nivel = evento.target.closest("[data-nivel]")?.dataset.nivel;
+            if (!nivel) return;
+            if (nivel === "projeto") this._irParaVista("entrada");
+            else this.querySelector("dialogo-planta-metro")?.fechar();
         });
 
         entrada.querySelectorAll("[data-vista]").forEach(cartao => {
@@ -868,6 +924,7 @@ export class PainelProjeto extends HTMLElement {
         this.mapaElemento.destacarLinhas(partesParaMapa, { ajustarZoom });
 
         this._aplicarMarcasAndar();
+        this._renderizarMigalhas();
     }
 
     _escolherSaf(safId, { ajustarZoom = true } = {}) {
@@ -1016,6 +1073,7 @@ export class PainelProjeto extends HTMLElement {
             // Modo foco: o mapa mantém o tamanho e o painel de plantas ocupa o resto (a matriz some até fechar),
             // para a pessoa ver onde está o metro sem o painel cobrir o mapa.
             this.classList.add("foco-metro");
+            this._rotuloMetroAberto = `${rotuloLinha} · metro ${indiceMetro}`;
 
             // O mapa mostra onde fica este metro (rótulo + zoom de 1 m), para a pessoa se situar no campo.
             this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual, {
@@ -1025,14 +1083,16 @@ export class PainelProjeto extends HTMLElement {
 
             // A biblioteca é global e pode ter mudado em outra tela: relê a cada abertura.
             if (!dialogo.aberto) dialogo.especies = await plantaTerraDB.listarEspecies();
-            dialogo.abrir({
+            await dialogo.abrir({
                 titulo: `${prefixoSaf}${rotuloLinha} — metro ${indiceMetro}`,
                 plantas: (this._plantasPorLinhaEmEdicao.get(linha.id) ?? []).filter(p => p.indice_metro === indiceMetro)
             });
+            this._renderizarMigalhas();
         };
 
         dialogo.addEventListener("fechado", () => {
             this.classList.remove("foco-metro");
+            this._renderizarMigalhas();
             // Se o GPS estava guiando, a matriz volta já na posição certa.
             const andar = this.querySelector("andar-gps");
             const maisProximo = this._ultimaAvaliacaoAndar?.maisProximo;
