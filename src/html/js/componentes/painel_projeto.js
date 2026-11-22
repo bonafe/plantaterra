@@ -995,6 +995,8 @@ export class PainelProjeto extends HTMLElement {
             const safDaLinha = this.safsComLinhas.find(({ saf }) => saf.id === linha.saf_id)?.saf;
             const prefixoSaf = this.safsComLinhas.length > 1 && safDaLinha ? `${safDaLinha.nome} · ` : "";
 
+            this.querySelector("matriz-saf").selecionar(`${linha.id}|${indiceMetro}`);
+
             // O mapa mostra onde fica este metro (rótulo + zoom de 1 m), para a pessoa se situar no campo.
             this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual, {
                 rotulo: `${prefixoSaf}${rotuloLinha} · metro ${indiceMetro}`,

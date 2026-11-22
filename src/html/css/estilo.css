@@ -8,6 +8,7 @@
     --cor-perigo: #c53030;
     --raio: 10px;
     --espaco: 12px;
+    --cor-fundo-pagina: #fff;
 }
 
 * {
@@ -667,16 +668,59 @@ andar-gps[hidden] {
     gap: 4px;
 }
 
+/*
+ * Cabeçalho de metros (topo) e nome da fileira (esquerda) ficam fixos ao rolar
+ * (position: sticky dentro do contêiner que rola). Fundo opaco e z-index em
+ * camadas — sem isso, as células passavam por cima/por baixo e o rótulo
+ * "sumia" em alguns celulares. O canto fica acima dos dois.
+ */
+.matriz-saf-rotulo,
+.matriz-saf-cabecalho,
+.matriz-saf-canto {
+    position: -webkit-sticky;
+    position: sticky;
+    background: var(--cor-fundo-pagina);
+    color: var(--cor-texto-suave);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
 .matriz-saf-rotulo {
     display: flex;
     align-items: center;
-    font-size: 0.85rem;
-    color: var(--cor-texto-suave);
-    white-space: nowrap;
-    padding-right: 10px;
-    position: sticky;
     left: 0;
-    background: var(--cor-secundaria);
+    z-index: 2;
+    padding-right: 10px;
+}
+
+.matriz-saf-cabecalho,
+.matriz-saf-canto {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    top: 0;
+    z-index: 3;
+    border-bottom: 1px solid var(--cor-borda);
+}
+
+.matriz-saf-canto {
+    left: 0;
+    z-index: 4;
+    justify-content: flex-start;
+}
+
+.matriz-saf-ativo {
+    color: var(--cor-texto);
+    font-weight: 700;
+}
+
+.matriz-saf-cabecalho.matriz-saf-ativo {
+    border-bottom: 3px solid #b7791f;
+}
+
+.quadrado-metro-selecionado {
+    outline: 3px solid #b7791f;
+    outline-offset: 1px;
 }
 
 .quadrado-metro {
@@ -913,6 +957,7 @@ dialog select {
         --cor-texto-suave: #a0aec0;
         --cor-borda: #2d3748;
         --cor-secundaria: #2d3748;
+        --cor-fundo-pagina: #1a202c;
     }
     .botao-secundario {
         background: #2d3748;
