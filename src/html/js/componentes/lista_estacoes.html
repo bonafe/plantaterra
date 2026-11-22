@@ -1,0 +1,22 @@
+<ul class="lista-estacoes">
+    <template data-if="vazia">
+        <li class="lista-vazia">Nenhuma estação ainda.</li>
+    </template>
+    <template data-for="e in itens : id">
+        <li class="item-estacao">
+            <details>
+                <summary>
+                    <strong>{{ e.nome }}</strong>
+                    <span>altura instr.: {{ e.alturaInstrumento }}</span>
+                    <span>offset: {{ e.offset }}</span>
+                </summary>
+                <ul class="lista-leituras">
+                    <template data-for="l in e.leituras : id">
+                        <li class="item-leitura">{{ l.texto }}</li>
+                    </template>
+                </ul>
+                <button type="button" class="botao-secundario" data-acao="nova-leitura" data-on='{"click":"novaLeitura"}'>+ Leitura nesta estação</button>
+            </details>
+        </li>
+    </template>
+</ul>

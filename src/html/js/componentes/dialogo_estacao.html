@@ -1,0 +1,24 @@
+<dialog class="dialogo-estacao">
+    <form class="formulario-estacao" data-on='{"submit":"aoEnviar"}'>
+        <h2>Nova estação de nível</h2>
+        <campo-coordenada></campo-coordenada>
+        <label>Nome da estação
+            <input type="text" name="nome" required maxlength="60" />
+        </label>
+        <label>Altura do instrumento (m)
+            <input type="number" name="altura_instrumento" step="0.001" min="0" required />
+        </label>
+        <label class="campo-amarracao" data-bind='{"hidden":"semAmarracao"}'>Amarrar a
+            <select name="amarrada_a">
+                <option value="">Nenhuma (esta será uma referência independente)</option>
+                <template data-for="e in estacoesParaAmarrar : id">
+                    <option data-bind='{"value":"e.id"}'>{{ e.nome }}</option>
+                </template>
+            </select>
+        </label>
+        <div class="acoes-formulario">
+            <button type="submit" class="botao-primario" data-bind='{"disabled":"semCoordenada"}'>Salvar estação</button>
+            <button type="button" data-acao="cancelar-estacao" data-on='{"click":"fechar"}'>Cancelar</button>
+        </div>
+    </form>
+</dialog>
