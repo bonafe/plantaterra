@@ -191,7 +191,7 @@ Botão **"⭳ Backup"** na lista de projetos abre um diálogo para escolher o qu
   biblioteca: [ { nome_popular, ... } ] | null }
 ```
 
-Cada projeto leva **todas** as suas entidades: perímetros (`trilha_perimetro`, com pontos brutos, `ativo` e `visivel`), estações e leituras, SAFs, linhas de plantio, plantas e elementos de contexto. O botão de exportar dentro de um projeto (⭳ no painel) gera o mesmo formato com só aquele projeto.
+Cada projeto leva **todas** as suas entidades: perímetros (`trilha_perimetro`, com pontos brutos, `ativo` e `visivel`), estações e leituras, SAFs, linhas de plantio, plantas e elementos de contexto. O **menu "⋮"** do cabeçalho de um projeto (lista de itens, fecha com toque fora ou Esc) reúne: *Exportar* — backup do projeto (mesmo formato, só aquele projeto), GeoJSON, KML e KMZ completo; e *Importar* — **Backup** (.json; usa o importador universal, cria projeto novo sem sobrescrever o atual e, se veio um projeto só, oferece abri-lo) e **KMZ/KML** (mesmo fluxo com pré-visualização da vista SAF, §14.3, entrando neste projeto).
 
 O botão **"⭱ Importar"** aceita qualquer arquivo do PlantaTerra e descobre o tipo sozinho: backup completo, **projeto avulso de versões antigas** (sem campo `formato`, só perímetros e estações) ou **só a biblioteca** (§15.1). Regras:
 - **Nunca sobrescreve.** Projetos entram como novos, com novos UUIDs (os vínculos internos — amarração entre estações, linhas de um SAF, plantas de uma linha — são refeitos). Se já existe um projeto com o mesmo nome, o importado recebe o sufixo " (importado)"; ao restaurar num aparelho vazio, os nomes voltam como eram.

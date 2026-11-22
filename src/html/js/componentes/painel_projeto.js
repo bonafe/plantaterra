@@ -1,5 +1,5 @@
 import { plantaTerraDB } from "../db/plantaterra_db.js";
-import { exportarProjeto } from "../db/exportador_projeto.js";
+import { exportarProjeto, importarArquivo } from "../db/exportador_projeto.js";
 import { exportarGeoJSON, exportarKML, exportarKMZ, exportarKMLTrilha } from "../db/exportador_geoespacial.js";
 import { CaptadorTrilha } from "../gps/captador_trilha.js";
 import {
@@ -51,27 +51,31 @@ export class PainelProjeto extends HTMLElement {
                 <header class="cabecalho-app cabecalho-projeto">
                     <a href="#/" class="botao-voltar" aria-label="Voltar">←</a>
                     <h1>${escaparHtml(this.projeto.nome)}</h1>
-                    <button type="button" data-acao="abrir-exportar" class="botao-icone" aria-label="Exportar projeto">⭳</button>
+                    <button type="button" data-acao="abrir-menu" class="botao-icone" aria-label="Menu do projeto" aria-haspopup="true" aria-expanded="false">⋮</button>
+                    <nav class="menu-projeto" hidden>
+                        <p class="menu-projeto-titulo">Exportar</p>
+                        <button type="button" data-acao="exportar-backup">
+                            <strong>Backup do projeto</strong><span>.json — para restaurar depois</span>
+                        </button>
+                        <button type="button" data-acao="exportar-geojson">
+                            <strong>GeoJSON</strong><span>.geojson — QGIS, Mapbox etc.</span>
+                        </button>
+                        <button type="button" data-acao="exportar-kml">
+                            <strong>KML</strong><span>.kml — Google Earth</span>
+                        </button>
+                        <button type="button" data-acao="exportar-kmz">
+                            <strong>KMZ completo</strong><span>.kmz — Google Earth</span>
+                        </button>
+                        <p class="menu-projeto-titulo">Importar</p>
+                        <button type="button" data-acao="importar-backup">
+                            <strong>Backup</strong><span>.json — cria um projeto novo (não sobrescreve)</span>
+                        </button>
+                        <button type="button" data-acao="importar-kmz">
+                            <strong>KMZ/KML</strong><span>SAF, linhas de plantio e contexto, neste projeto</span>
+                        </button>
+                        <input type="file" accept="application/json,.json" data-acao="importar-backup-arquivo" hidden />
+                    </nav>
                 </header>
-
-                <dialog class="dialogo-exportar">
-                    <h2>Exportar projeto</h2>
-                    <div class="acoes-formulario acoes-formulario-coluna">
-                        <button type="button" data-acao="exportar-backup" class="botao-secundario botao-largo">
-                            Backup do projeto (.json)
-                        </button>
-                        <button type="button" data-acao="exportar-geojson" class="botao-secundario botao-largo">
-                            GeoJSON — QGIS, Mapbox etc. (.geojson)
-                        </button>
-                        <button type="button" data-acao="exportar-kml" class="botao-secundario botao-largo">
-                            KML — Google Earth (.kml)
-                        </button>
-                        <button type="button" data-acao="exportar-kmz" class="botao-secundario botao-largo">
-                            KMZ completo — Google Earth (.kmz)
-                        </button>
-                        <button type="button" data-acao="fechar-exportar">Fechar</button>
-                    </div>
-                </dialog>
 
                 <div class="mapa-caixa">
                     <mapa-projeto class="mapa"></mapa-projeto>
@@ -181,7 +185,7 @@ export class PainelProjeto extends HTMLElement {
         this.mapaElemento = this.querySelector("mapa-projeto");
         this.capturaGps = this.querySelector("captura-gps");
 
-        this._wireExportar();
+        this._wireMenu();
         this._wireTerrenoConvexo();
         this._wirePerimetro();
         this._wireEditorPontosTrilha();
@@ -237,27 +241,75 @@ export class PainelProjeto extends HTMLElement {
 
     // ---------------- Exportar ----------------
 
-    _wireExportar() {
-        const dialogo = this.querySelector(".dialogo-exportar");
+    /**
+     * Menu "⋮" do cabeçalho: exportar (backup e formatos GIS) e importar (backup
+     * .json, que cria um projeto novo, e KMZ/KML, que entra neste projeto).
+     */
+    _wireMenu() {
+        const botao = this.querySelector('[data-acao="abrir-menu"]');
+        const menu = this.querySelector(".menu-projeto");
+        const arquivoBackup = menu.querySelector('[data-acao="importar-backup-arquivo"]');
 
-        this.querySelector('[data-acao="abrir-exportar"]').addEventListener("click", () => dialogo.showModal());
-        this.querySelector('[data-acao="fechar-exportar"]').addEventListener("click", () => dialogo.close());
+        const fechar = () => {
+            menu.hidden = true;
+            botao.setAttribute("aria-expanded", "false");
+            document.removeEventListener("pointerdown", foraDoMenu, true);
+            document.removeEventListener("keydown", aoTeclar, true);
+        };
+        const foraDoMenu = evento => {
+            if (!menu.contains(evento.target) && !botao.contains(evento.target)) fechar();
+        };
+        const aoTeclar = evento => {
+            if (evento.key === "Escape") fechar();
+        };
+        const abrir = () => {
+            menu.hidden = false;
+            botao.setAttribute("aria-expanded", "true");
+            document.addEventListener("pointerdown", foraDoMenu, true);
+            document.addEventListener("keydown", aoTeclar, true);
+        };
+        this._fecharMenu = fechar;
 
-        this.querySelector('[data-acao="exportar-backup"]').addEventListener("click", () => {
-            exportarProjeto(this.projetoId);
-            dialogo.close();
+        botao.addEventListener("click", () => (menu.hidden ? abrir() : fechar()));
+
+        const acoes = {
+            "exportar-backup": () => exportarProjeto(this.projetoId),
+            "exportar-geojson": () => exportarGeoJSON(this.projetoId),
+            "exportar-kml": () => exportarKML(this.projetoId),
+            "exportar-kmz": () => exportarKMZ(this.projetoId),
+            "importar-backup": () => arquivoBackup.click(),
+            // Mesmo fluxo do botão "Importar KMZ/KML" da vista SAF (pré-visualização antes de gravar).
+            "importar-kmz": () => this.querySelector('[data-acao="importar-arquivo-saf"]').click()
+        };
+        menu.addEventListener("click", evento => {
+            const item = evento.target.closest("button[data-acao]");
+            if (!item || !acoes[item.dataset.acao]) return;
+            fechar();
+            acoes[item.dataset.acao]();
         });
-        this.querySelector('[data-acao="exportar-geojson"]').addEventListener("click", () => {
-            exportarGeoJSON(this.projetoId);
-            dialogo.close();
-        });
-        this.querySelector('[data-acao="exportar-kml"]').addEventListener("click", () => {
-            exportarKML(this.projetoId);
-            dialogo.close();
-        });
-        this.querySelector('[data-acao="exportar-kmz"]').addEventListener("click", () => {
-            exportarKMZ(this.projetoId);
-            dialogo.close();
+
+        arquivoBackup.addEventListener("change", async evento => {
+            const arquivo = evento.target.files[0];
+            evento.target.value = "";
+            if (!arquivo) return;
+            try {
+                const { projetos, biblioteca } = await importarArquivo(arquivo);
+                const partes = [];
+                if (projetos.length) partes.push(`${projetos.length} projeto(s) novo(s)`);
+                if (biblioteca) {
+                    partes.push(`biblioteca: ${biblioteca.adicionadas} espécie(s) adicionada(s)` +
+                        (biblioteca.jaExistentes ? `, ${biblioteca.jaExistentes} já existia(m)` : ""));
+                }
+                const resumo = `Importação concluída: ${partes.join(" · ")}.`;
+                // Um projeto só (sem biblioteca): oferece abrir; o atual não foi tocado.
+                if (projetos.length === 1 && !biblioteca) {
+                    if (confirm(`${resumo}\n\nAbrir o projeto importado agora?`)) location.hash = `#/projeto/${projetos[0].id}`;
+                } else {
+                    alert(`${resumo} Veja na lista de projetos.`);
+                }
+            } catch (erro) {
+                alert(`Não foi possível importar o arquivo: ${erro.message}`);
+            }
         });
     }
 

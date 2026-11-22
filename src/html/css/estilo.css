@@ -1032,3 +1032,67 @@ campo-coordenada {
     display: block;
     margin: 8px 0;
 }
+
+/* Menu "⋮" do projeto (exportar / importar) */
+.cabecalho-projeto {
+    position: relative;
+}
+
+.menu-projeto {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 8px;
+    z-index: 1000;
+    width: min(320px, calc(100vw - 16px));
+    max-height: 80dvh;
+    overflow-y: auto;
+    padding: 6px;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    background: var(--cor-secundaria);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.menu-projeto[hidden] {
+    display: none;
+}
+
+.menu-projeto-titulo {
+    margin: 8px 10px 2px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cor-texto-suave);
+}
+
+.menu-projeto-titulo:first-child {
+    margin-top: 2px;
+}
+
+.menu-projeto button[data-acao] {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    min-height: 48px;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--cor-texto);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.menu-projeto button[data-acao]:hover,
+.menu-projeto button[data-acao]:focus-visible {
+    background: rgba(56, 161, 105, 0.18);
+}
+
+.menu-projeto button[data-acao] span {
+    font-size: 0.8rem;
+    color: var(--cor-texto-suave);
+}
