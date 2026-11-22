@@ -1229,7 +1229,27 @@ dialog.dialogo-planta-metro[open] {
     border-top: 1px solid var(--cor-borda);
 }
 
-dialog.dialogo-planta-metro[open] .planta-metro-titulo {
-    margin: 0 0 8px;
+/* Cabeçalho do painel: seta "←" para voltar, como no resto do app. */
+.planta-metro-cabecalho {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.planta-metro-cabecalho .botao-voltar {
+    flex: 0 0 auto;
+    min-width: 44px;
+    min-height: 44px;
+    color: var(--cor-texto);
+}
+
+dialog.dialogo-planta-metro .planta-metro-titulo {
+    margin: 0;
     font-size: 1.05rem;
+}
+
+/* O navegador foca o primeiro botão ao abrir o painel; sem isso a seta aparece com contorno. */
+.planta-metro-cabecalho .botao-voltar:focus {
+    outline: none;
 }

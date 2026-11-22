@@ -1,5 +1,8 @@
 <dialog class="dialogo-planta-metro">
-    <h2 class="planta-metro-titulo">{{ titulo }}</h2>
+    <div class="planta-metro-cabecalho">
+        <button type="button" class="botao-voltar" data-acao="fechar-planta-metro" aria-label="Voltar" data-on='{"click":"fechar"}'>←</button>
+        <h2 class="planta-metro-titulo">{{ titulo }}</h2>
+    </div>
     <ul class="lista-plantas-metro">
         <template data-if="vazia">
             <li class="lista-vazia">Nenhuma planta cadastrada neste metro ainda.</li>
@@ -32,8 +35,7 @@
             <input type="text" name="data_plantio" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" data-on='{"input":"mascararData"}' />
         </label>
         <div class="acoes-formulario">
-            <button type="submit" class="botao-primario">Adicionar planta</button>
-            <button type="button" data-acao="fechar-planta-metro" data-on='{"click":"fechar"}'>Fechar</button>
+            <button type="submit" class="botao-primario botao-largo">Adicionar planta</button>
         </div>
     </form>
 </dialog>
