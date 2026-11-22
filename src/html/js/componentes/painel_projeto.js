@@ -24,6 +24,8 @@ import { escaparHtml, formatarMetros, formatarArea, formatarData, formatarDataSi
 import "./mapa_projeto.js";
 import "./captura_gps.js";
 
+const CHAVE_ULTIMO_LUGAR = "plantaterra:ultimo-lugar";
+
 /**
  * <painel-projeto data-id="...">: tela principal de um projeto — mapa +
  * fluxos de mapeamento de perímetro e de registro de nível.
@@ -66,11 +68,29 @@ export class PainelProjeto extends HTMLElement {
                     </div>
                 </dialog>
 
-                <mapa-projeto class="mapa"></mapa-projeto>
+                <div class="mapa-caixa">
+                    <mapa-projeto class="mapa"></mapa-projeto>
+                    <button type="button" class="mapa-ampliar" data-acao="mapa-ampliar" aria-label="Ampliar mapa" hidden>⤢</button>
+                </div>
 
                 <div class="painel-inferior">
-                    <div class="secoes-padrao">
-                        <section class="secao-perimetro">
+                    <div class="vista-entrada">
+                        <button type="button" class="cartao-entrada" data-vista="perimetro">
+                            <strong>Perímetro</strong>
+                            <span class="resumo-perimetro"></span>
+                        </button>
+                        <button type="button" class="cartao-entrada" data-vista="estacoes">
+                            <strong>Estações de nível</strong>
+                            <span class="resumo-estacoes"></span>
+                        </button>
+                        <button type="button" class="cartao-entrada" data-vista="saf">
+                            <strong>Sistemas Agroflorestais (SAF)</strong>
+                            <span class="resumo-saf"></span>
+                        </button>
+                    </div>
+
+                    <div class="secoes-padrao" hidden>
+                        <section class="secao-perimetro" data-vista-secao="perimetro">
                             <div class="secao-cabecalho">
                                 <h2>Perímetro</h2>
                                 <span class="area-perimetro"></span>
@@ -92,7 +112,7 @@ export class PainelProjeto extends HTMLElement {
                             </button>
                         </section>
 
-                        <section class="secao-estacoes">
+                        <section class="secao-estacoes" data-vista-secao="estacoes">
                             <div class="secao-cabecalho">
                                 <h2>Estações de nível</h2>
                                 <button type="button" data-acao="nova-estacao" class="botao-primario">+ Estação</button>
@@ -100,33 +120,36 @@ export class PainelProjeto extends HTMLElement {
                             <ul class="lista-estacoes"></ul>
                         </section>
 
-                        <section class="secao-curvas">
+                        <section class="secao-curvas" data-vista-secao="estacoes">
                             <button type="button" data-acao="gerar-curvas" class="botao-secundario botao-largo">
                                 Gerar curvas de nível
                             </button>
                         </section>
-
-                        <section class="secao-saf">
-                            <div class="secao-cabecalho">
-                                <h2>Sistemas Agroflorestais (SAF)</h2>
-                                <label class="botao-secundario botao-arquivo">
-                                    Importar KMZ/KML
-                                    <input type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" data-acao="importar-arquivo-saf" hidden />
-                                </label>
-                            </div>
-                            <p class="saf-resumo-total"></p>
-                            <button type="button" class="botao-primario botao-largo botao-andar-saf" data-acao="andar-saf" hidden>
-                                📍 Andar pela agrofloresta
-                            </button>
-                            <ul class="lista-safs"></ul>
-                        </section>
                     </div>
 
-                    <section class="secao-editor-saf" hidden>
+                    <section class="vista-saf" hidden>
                         <div class="secao-cabecalho">
-                            <button type="button" data-acao="fechar-editor-saf" class="botao-icone" aria-label="Voltar">←</button>
-                            <h2 class="editor-saf-titulo"></h2>
+                            <h2>Sistemas Agroflorestais (SAF)</h2>
+                            <label class="botao-secundario botao-arquivo">
+                                Importar KMZ/KML
+                                <input type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" data-acao="importar-arquivo-saf" hidden />
+                            </label>
                         </div>
+                        <div class="saf-modos" role="tablist">
+                            <button type="button" class="saf-modo saf-modo-ativo" data-modo="atual">Atual</button>
+                            <button type="button" class="saf-modo" data-modo="andar">📍 Andar</button>
+                        </div>
+                        <div class="saf-seletor"></div>
+
+                        <div class="andar-faixa" hidden>
+                            <p class="andar-estado"></p>
+                            <div class="andar-acoes">
+                                <button type="button" class="botao-primario" data-acao="andar-voltar-seguir" hidden>🎯 Voltar a seguir</button>
+                                <button type="button" class="botao-secundario" data-acao="andar-rumo">🧭 Girar com você</button>
+                            </div>
+                            <p class="andar-status andar-rumo-status" hidden></p>
+                        </div>
+
                         <p class="editor-saf-info"></p>
                         <div class="matriz-saf-wrapper">
                             <div class="matriz-saf"></div>
@@ -146,19 +169,6 @@ export class PainelProjeto extends HTMLElement {
                         <button type="button" class="botao-primario" data-acao="salvar-edicao-pontos">Salvar alterações</button>
                         <button type="button" data-acao="fechar-editar-pontos">Fechar</button>
                     </div>
-                </div>
-
-                <div class="editor-andar-saf" hidden>
-                    <p class="andar-status">Toque em "Iniciar GPS" para ver os metros perto de você.</p>
-                    <div class="andar-acoes">
-                        <button type="button" class="botao-primario" data-acao="andar-alternar-gps">▶ Iniciar GPS</button>
-                        <button type="button" class="botao-secundario" data-acao="andar-centralizar" hidden>🎯 Seguir</button>
-                        <button type="button" class="botao-secundario" data-acao="andar-rumo">🧭 Girar com você</button>
-                        <button type="button" class="botao-secundario" data-acao="andar-sair">Sair</button>
-                    </div>
-                    <p class="andar-status andar-rumo-status" hidden></p>
-                    <div class="andar-candidatos"></div>
-                    <button type="button" class="botao-primario botao-largo" data-acao="andar-plantar" disabled>Escolha um metro acima</button>
                 </div>
 
                 <captura-gps></captura-gps>
@@ -270,9 +280,16 @@ export class PainelProjeto extends HTMLElement {
         this._wireEstacoes();
         this._wireCurvasDeNivel();
         this._wireSaf();
-        this._wireAndarSaf();
+        this._wireVistaSaf();
+        this._wireNavegacao();
 
         await this.recarregarTudo();
+
+        // Reabre no lugar onde a pessoa estava (ex: dentro da agrofloresta).
+        const lugar = this._lugarLembrado();
+        if (lugar && ["perimetro", "estacoes", "saf"].includes(lugar.vista)) {
+            await this._irParaVista(lugar.vista);
+        }
     }
 
     async recarregarTudo() {
@@ -297,7 +314,8 @@ export class PainelProjeto extends HTMLElement {
         this.mapaElemento.definirPerimetros(trilhasVisiveis);
         this.mapaElemento.definirEstacoesELeituras(estacoesComLeituras);
         this.mapaElemento.definirLinhasSaf(safsComLinhas);
-        this.mapaElemento.ajustarZoomParaConteudo();
+        // Na vista SAF o mapa acompanha a fileira/a pessoa: não reenquadra tudo a cada recarga.
+        if (this._vista !== "saf") this.mapaElemento.ajustarZoomParaConteudo();
 
         const areaElemento = this.querySelector(".area-perimetro");
         areaElemento.textContent = trilhaAtiva?.poligono?.length >= 3
@@ -305,7 +323,8 @@ export class PainelProjeto extends HTMLElement {
             : "ainda não mapeado";
 
         this._renderizarListaEstacoes();
-        this._renderizarListaSafs();
+        this._atualizarResumos();
+        if (this._vista === "saf") await this._recarregarVistaSaf();
     }
 
     // ---------------- Exportar ----------------
@@ -944,62 +963,229 @@ export class PainelProjeto extends HTMLElement {
     // ---------------- SAF / linhas de plantio ----------------
 
     disconnectedCallback() {
-        this._pararGpsAndar?.();
+        this._pararAndar?.();
     }
 
-    // ---------------- Modo "Andar na agrofloresta" (docs/especificacao.md secao 14.9) ----------------
+    // ---------------- Navegação entre vistas (docs/especificacao.md secao 14.10) ----------------
 
-    _wireAndarSaf() {
-        const painel = this.querySelector(".editor-andar-saf");
-        const status = painel.querySelector(".andar-status");
-        const botaoGps = painel.querySelector('[data-acao="andar-alternar-gps"]');
-        const botaoSeguir = painel.querySelector('[data-acao="andar-centralizar"]');
-        const botaoPlantar = painel.querySelector('[data-acao="andar-plantar"]');
-        const candidatos = painel.querySelector(".andar-candidatos");
+    /**
+     * O projeto tem uma tela de entrada (três cartões) e uma vista por assunto:
+     * perímetro, estações de nível e SAF. A última vista é lembrada para que o
+     * app reabra no lugar onde a pessoa estava (muitas vezes, a agrofloresta).
+     */
+    _wireNavegacao() {
+        const entrada = this.querySelector(".vista-entrada");
+        const secoes = this.querySelector(".secoes-padrao");
+        const vistaSaf = this.querySelector(".vista-saf");
+        const painelInferior = this.querySelector(".painel-inferior");
+        const botaoAmpliar = this.querySelector('[data-acao="mapa-ampliar"]');
 
-        const todosOsQuadrados = () => this._andar?.quadrados ?? [];
+        this._vista = "entrada";
 
-        /**
-         * Lê do banco as linhas e plantas de TODOS os SAFs do projeto (o modo é
-         * do projeto, não de um SAF) e monta a lista plana de quadrados. Cada SAF
-         * tem a sua própria matriz (§14.5a), então a fileira é identificada por
-         * (SAF, fileira) e, havendo mais de um SAF, o nome dela leva o do SAF.
-         */
-        this._carregarDadosAndar = async ({ ajustarZoom = false } = {}) => {
-            const safsComLinhas = (await plantaTerraDB.listarTodasLinhasDoProjeto(this.projetoId))
-                .filter(({ linhas }) => linhas.length > 0);
-            const todasLinhas = safsComLinhas.flatMap(({ linhas }) => linhas);
-            const plantasPorLinha = await Promise.all(todasLinhas.map(l => plantaTerraDB.listarPlantasDaLinha(l.id)));
-
-            // O diálogo de planta lê estes dois mapas, que no editor de um SAF só têm as linhas dele.
-            this._linhasDoSafEmEdicaoPorId = new Map(todasLinhas.map(l => [l.id, l]));
-            this._plantasPorLinhaEmEdicao = new Map(todasLinhas.map((l, i) => [l.id, plantasPorLinha[i]]));
-
-            const variosSafs = safsComLinhas.length > 1;
-            let ordemFileira = 0;
-            const quadrados = [];
-            for (const { saf, linhas } of safsComLinhas) {
-                for (const fileira of calcularMatrizSaf(linhas).linhasLogicas) {
-                    const indiceFileira = ordemFileira++;
-                    const nomeFileira = variosSafs ? `${saf.nome} · ${fileira.nomeExibicao}` : fileira.nomeExibicao;
-                    for (const q of fileira.quadrados) {
-                        quadrados.push({ ...q, chave: `${q.linhaId}|${q.indiceMetro}`, indiceFileira, nomeFileira });
-                    }
-                }
+        this._irParaVista = async vista => {
+            if (this._vista === "saf" && vista !== "saf") {
+                this._pararAndar();
+                this.mapaElemento.limparLinhasDestacadas();
             }
-            if (this._andar) this._andar.quadrados = quadrados;
+            this._vista = vista;
 
-            const partesParaMapa = todasLinhas.map(linha => {
-                const plantasPorMetro = agruparPlantasPorMetro(this._plantasPorLinhaEmEdicao.get(linha.id));
-                const { segmentos } = dividirEmMetros(linha.geometria);
-                const pontosPlantados = [...plantasPorMetro.entries()]
-                    .map(([indiceMetro, plantasDoMetro]) => ({ indiceMetro, coordenada: segmentos[indiceMetro]?.meio, plantas: plantasDoMetro }))
-                    .filter(ponto => ponto.coordenada);
-                return { linha, pontosPlantados };
+            entrada.hidden = vista !== "entrada";
+            secoes.hidden = vista !== "perimetro" && vista !== "estacoes";
+            secoes.querySelectorAll("[data-vista-secao]").forEach(secao => {
+                secao.hidden = secao.dataset.vistaSecao !== vista;
             });
-            // O mapa acompanha a pessoa: só enquadra tudo na entrada, antes do primeiro sinal de GPS.
-            this.mapaElemento.destacarLinhas(partesParaMapa, { ajustarZoom });
-            this._renderizarModoAndar?.();
+            vistaSaf.hidden = vista !== "saf";
+            painelInferior.classList.toggle("painel-saf", vista === "saf");
+            this.classList.toggle("vista-saf-ativa", vista === "saf");
+            botaoAmpliar.hidden = vista !== "saf";
+            this._definirMapaAmpliado(false);
+
+            if (vista === "saf") {
+                await this._abrirVistaSaf();
+            } else {
+                this.mapaElemento.ajustarZoomParaConteudo();
+            }
+            this._lembrarLugar();
+        };
+
+        this._definirMapaAmpliado = ampliado => {
+            this.classList.toggle("mapa-ampliado", ampliado);
+            botaoAmpliar.textContent = ampliado ? "⤡" : "⤢";
+            botaoAmpliar.setAttribute("aria-label", ampliado ? "Reduzir mapa" : "Ampliar mapa");
+            // O contêiner muda de tamanho por CSS; o mapa precisa recalcular o canvas.
+            requestAnimationFrame(() => this.mapaElemento.invalidarTamanho());
+        };
+
+        botaoAmpliar.addEventListener("click", () => {
+            this._definirMapaAmpliado(!this.classList.contains("mapa-ampliado"));
+        });
+
+        entrada.querySelectorAll("[data-vista]").forEach(cartao => {
+            cartao.addEventListener("click", () => this._irParaVista(cartao.dataset.vista));
+        });
+
+        // "←": numa vista volta para a entrada; na entrada volta para a lista de projetos.
+        this.querySelector(".botao-voltar").addEventListener("click", evento => {
+            if (this._vista !== "entrada") {
+                evento.preventDefault();
+                this._irParaVista("entrada");
+            } else {
+                localStorage.removeItem(CHAVE_ULTIMO_LUGAR);
+            }
+        });
+    }
+
+    _lembrarLugar() {
+        try {
+            localStorage.setItem(CHAVE_ULTIMO_LUGAR, JSON.stringify({
+                projetoId: this.projetoId,
+                vista: this._vista,
+                safId: this._safAtualId ?? null
+            }));
+        } catch { /* armazenamento indisponível: só não reabre no mesmo lugar */ }
+    }
+
+    _lugarLembrado() {
+        try {
+            const lugar = JSON.parse(localStorage.getItem(CHAVE_ULTIMO_LUGAR));
+            return lugar?.projetoId === this.projetoId ? lugar : null;
+        } catch {
+            return null;
+        }
+    }
+
+    _atualizarResumos() {
+        const resumo = seletor => this.querySelector(seletor);
+
+        resumo(".resumo-perimetro").textContent = this.trilhaAtiva?.poligono?.length >= 3
+            ? formatarArea(areaPoligonoMetros2(this.trilhaAtiva.poligono))
+            : "ainda não mapeado";
+
+        const totalLeituras = this.estacoesComLeituras.reduce((soma, item) => soma + (item.leituras?.length ?? 0), 0);
+        resumo(".resumo-estacoes").textContent = this.estacoesComLeituras.length === 0
+            ? "nenhuma estação ainda"
+            : `${this.estacoesComLeituras.length} estação(ões) · ${totalLeituras} leitura(s)`;
+
+        const totalLinhas = this.safsComLinhas.reduce((soma, { linhas }) => soma + linhas.length, 0);
+        resumo(".resumo-saf").textContent = this.safsComLinhas.length === 0
+            ? "nenhum SAF importado ainda"
+            : `${this.safsComLinhas.length} SAF(s) · ${totalLinhas} linha(s)`;
+    }
+
+    // ---------------- Vista SAF: matriz + modo "Andar" (docs/especificacao.md secoes 14.5a, 14.9) ----------------
+
+    async _abrirVistaSaf() {
+        const lugar = this._lugarLembrado();
+        if (lugar?.safId && !this._safAtualId) this._safAtualId = lugar.safId;
+        await this._recarregarVistaSaf({ ajustarZoom: true });
+    }
+
+    /**
+     * Lê do banco linhas e plantas de TODOS os SAFs (o "Andar" muda de SAF
+     * sozinho conforme a pessoa se move) e desenha seletor, matriz e mapa.
+     */
+    async _recarregarVistaSaf({ ajustarZoom = false } = {}) {
+        const safsComLinhas = (await plantaTerraDB.listarTodasLinhasDoProjeto(this.projetoId))
+            .filter(({ linhas }) => linhas.length > 0);
+        const todasLinhas = safsComLinhas.flatMap(({ linhas }) => linhas);
+        const plantasPorLinha = await Promise.all(todasLinhas.map(l => plantaTerraDB.listarPlantasDaLinha(l.id)));
+
+        // O diálogo de planta lê estes dois mapas.
+        this._linhasDoSafEmEdicaoPorId = new Map(todasLinhas.map(l => [l.id, l]));
+        this._plantasPorLinhaEmEdicao = new Map(todasLinhas.map((l, i) => [l.id, plantasPorLinha[i]]));
+
+        this._dadosSaf = safsComLinhas.map(({ saf, linhas }) => ({ saf, linhas, matriz: calcularMatrizSaf(linhas) }));
+        this._quadradosSaf = this._dadosSaf.flatMap(({ saf, matriz }) =>
+            matriz.linhasLogicas.flatMap(fileira => fileira.quadrados.map(q => ({ ...q, safId: saf.id, chave: `${q.linhaId}|${q.indiceMetro}` })))
+        );
+
+        if (!this._dadosSaf.some(d => d.saf.id === this._safAtualId)) {
+            this._safAtualId = this._dadosSaf[0]?.saf.id ?? null;
+        }
+        this._renderizarVistaSaf({ ajustarZoom });
+    }
+
+    _renderizarVistaSaf({ ajustarZoom = false } = {}) {
+        const vista = this.querySelector(".vista-saf");
+        const seletor = vista.querySelector(".saf-seletor");
+        const info = vista.querySelector(".editor-saf-info");
+        const matrizElemento = vista.querySelector(".matriz-saf");
+
+        const atual = this._dadosSaf.find(d => d.saf.id === this._safAtualId);
+        if (!atual) {
+            seletor.innerHTML = "";
+            info.textContent = "Nenhum SAF com linhas de plantio ainda. Use \"Importar KMZ/KML\" acima.";
+            matrizElemento.innerHTML = "";
+            this._celulasMatriz = new Map();
+            this.mapaElemento.limparLinhasDestacadas();
+            return;
+        }
+
+        seletor.hidden = this._dadosSaf.length < 2;
+        seletor.innerHTML = this._dadosSaf.map(({ saf }) => `
+            <button type="button" class="saf-chip${saf.id === this._safAtualId ? " saf-chip-ativo" : ""}" data-saf-id="${saf.id}">
+                ${escaparHtml(saf.nome)}
+            </button>`).join("");
+
+        const totalPlantas = atual.linhas.reduce((soma, l) => soma + (this._plantasPorLinhaEmEdicao.get(l.id)?.length ?? 0), 0);
+        info.textContent = `${atual.linhas.length} linha(s) · ${atual.matriz.linhasLogicas.length} fileira(s) · ${totalPlantas} planta(s)`;
+
+        this._renderizarMatriz(atual.matriz, matrizElemento);
+
+        const partesParaMapa = atual.linhas.map(linha => {
+            const plantasPorMetro = agruparPlantasPorMetro(this._plantasPorLinhaEmEdicao.get(linha.id));
+            const { segmentos } = dividirEmMetros(linha.geometria);
+            const pontosPlantados = [...plantasPorMetro.entries()]
+                .map(([indiceMetro, plantasDoMetro]) => ({ indiceMetro, coordenada: segmentos[indiceMetro]?.meio, plantas: plantasDoMetro }))
+                .filter(ponto => ponto.coordenada);
+            return { linha, pontosPlantados };
+        });
+        this.mapaElemento.destacarLinhas(partesParaMapa, { ajustarZoom });
+
+        this._marcarProximosNaMatriz();
+    }
+
+    _escolherSaf(safId, { ajustarZoom = true } = {}) {
+        if (safId === this._safAtualId) return;
+        this._safAtualId = safId;
+        this._renderizarVistaSaf({ ajustarZoom });
+        this._lembrarLugar();
+    }
+
+    // Plantas mudam na vista SAF: recarrega mantendo a rolagem da matriz.
+    async _recarregarAposMudarPlantas() {
+        await this._recarregarVistaSaf();
+    }
+
+    _wireVistaSaf() {
+        const vista = this.querySelector(".vista-saf");
+        const wrapper = vista.querySelector(".matriz-saf-wrapper");
+        const faixa = vista.querySelector(".andar-faixa");
+        const estadoTexto = faixa.querySelector(".andar-estado");
+        const botaoVoltarSeguir = faixa.querySelector('[data-acao="andar-voltar-seguir"]');
+        const botaoRumo = faixa.querySelector('[data-acao="andar-rumo"]');
+        const statusRumo = faixa.querySelector(".andar-rumo-status");
+        const abas = vista.querySelectorAll(".saf-modo");
+
+        const RAIO_ATUAR_M = 25; // mais longe que isso, a pessoa não está "em" nenhuma fileira
+
+        const atualizarEstado = () => {
+            const andar = this._andar;
+            if (!andar) return;
+            botaoVoltarSeguir.hidden = andar.seguindo || !andar.posicao;
+            let texto;
+            if (!andar.posicao) {
+                texto = "Aguardando sinal do GPS…";
+            } else if (!andar.seguindo) {
+                texto = "✋ Você está no controle. Toque em \"Voltar a seguir\" para o GPS guiar de novo.";
+            } else if (andar.distanciaM > RAIO_ATUAR_M) {
+                texto = `📡 GPS ligado, mas a fileira mais próxima está a ${andar.distanciaM.toFixed(0)} m.`;
+            } else {
+                const precisao = Number.isFinite(andar.posicao.precisao) ? `±${Math.round(andar.posicao.precisao)} m` : "precisão desconhecida";
+                texto = `📍 Seguindo o GPS (${precisao})` + (andar.posicao.precisao > 15 ? " — sinal fraco, confira olhando a linha." : ".");
+            }
+            estadoTexto.textContent = texto;
+            faixa.classList.toggle("andar-faixa-livre", !andar.seguindo);
         };
 
         const pararGps = () => {
@@ -1010,8 +1196,6 @@ export class PainelProjeto extends HTMLElement {
         };
 
         // ---- "Frente para cima": o mapa gira para o lado em que a pessoa olha ----
-        const botaoRumo = painel.querySelector('[data-acao="andar-rumo"]');
-        const statusRumo = painel.querySelector(".andar-rumo-status");
         const VELOCIDADE_MINIMA_GPS_MS = 0.7; // abaixo disso o rumo do GPS é ruído
         const FATOR_SUAVIZACAO = 0.25;
         const INTERVALO_MINIMO_MS = 100;
@@ -1041,12 +1225,8 @@ export class PainelProjeto extends HTMLElement {
             statusRumo.hidden = true;
         };
 
-        this._pararGpsAndar = () => {
-            pararGps();
-            pararRumo();
-        };
-
         botaoRumo.addEventListener("click", async () => {
+            if (!this._andar) return;
             if (this._andar.rumo) {
                 pararRumo();
                 return;
@@ -1069,201 +1249,150 @@ export class PainelProjeto extends HTMLElement {
                 : "Sem bússola neste aparelho (ou sem permissão): o mapa gira conforme você anda, pela direção do GPS. Ande reto por alguns passos para orientar.";
         });
 
-        const atualizarBotoes = () => {
-            const gpsLigado = this._andar?.watchId != null;
-            botaoGps.textContent = gpsLigado ? "⏹ Parar GPS" : "▶ Iniciar GPS";
-            botaoSeguir.hidden = !(gpsLigado && !this._andar.seguindo);
-        };
+        // ---- GPS: marca os metros por perto e, se a pessoa deixar, guia a matriz ----
 
-        this._renderizarModoAndar = () => {
-            const estado = this._andar;
-            if (!estado) return;
+        /** Aplica a posição atual: marca os metros próximos e (seguindo) troca de SAF e rola até o mais próximo. */
+        this._aplicarPosicaoAndar = () => {
+            const andar = this._andar;
+            if (!andar?.posicao) return;
 
-            const quadrados = todosOsQuadrados();
-            const porChave = new Map(quadrados.map(q => [q.chave, q]));
+            const raio = raioDeBuscaM(andar.posicao.precisao);
+            const { proximos, maisProximo } = encontrarMetrosProximos(andar.posicao, this._quadradosSaf, raio);
+            andar.proximos = proximos.map(m => m.quadrado);
+            andar.maisProximo = maisProximo?.quadrado ?? null;
+            andar.distanciaM = maisProximo?.distanciaM ?? Infinity;
+
+            if (andar.seguindo && andar.maisProximo && andar.distanciaM <= RAIO_ATUAR_M) {
+                this._escolherSaf(andar.maisProximo.safId, { ajustarZoom: false });
+            }
+            this._marcarProximosNaMatriz();
+            if (andar.seguindo && andar.maisProximo && andar.distanciaM <= RAIO_ATUAR_M) {
+                this._rolarMatrizPara(andar.maisProximo);
+            }
+
             const plantado = q => (this._plantasPorLinhaEmEdicao.get(q.linhaId) ?? []).some(p => p.indice_metro === q.indiceMetro);
-
-            let exibidos = [];
-            let maisProximo = null;
-            if (estado.posicao) {
-                const raio = raioDeBuscaM(estado.posicao.precisao);
-                const resultado = encontrarMetrosProximos(estado.posicao, quadrados, raio);
-                exibidos = resultado.proximos.map(m => m.quadrado);
-                maisProximo = resultado.maisProximo;
-
-                const precisaoTexto = Number.isFinite(estado.posicao.precisao) ? `±${Math.round(estado.posicao.precisao)} m` : "desconhecida";
-                status.textContent = `Precisão ${precisaoTexto} · mostrando metros em até ${Math.round(raio)} m` +
-                    (estado.posicao.precisao > 15 ? " — sinal fraco, confira a posição olhando a linha." : ".");
-            }
-
-            // A escolha da pessoa não some quando o GPS oscila e o metro sai do raio.
-            const selecionada = porChave.get(estado.selecionada) ?? null;
-            if (selecionada && !exibidos.some(q => q.chave === selecionada.chave)) {
-                exibidos = [...exibidos, selecionada];
-            }
-
-            // Uma linha de botões por fileira, ordenadas como na matriz: as posições
-            // dos botões ficam estáveis enquanto o GPS oscila.
-            const porFileira = new Map();
-            exibidos.forEach(q => {
-                if (!porFileira.has(q.indiceFileira)) porFileira.set(q.indiceFileira, []);
-                porFileira.get(q.indiceFileira).push(q);
-            });
-            const fileirasOrdenadas = [...porFileira.entries()].sort((a, b) => a[0] - b[0]);
-
-            if (!estado.posicao) {
-                candidatos.innerHTML = "";
-            } else if (exibidos.length === 0) {
-                candidatos.innerHTML = `<p class="ajuda-campo">Nenhum metro por perto.` +
-                    (maisProximo ? ` O mais próximo (${escaparHtml(maisProximo.quadrado.nomeFileira)}, metro ${maisProximo.quadrado.indiceMetro}) está a ${maisProximo.distanciaM.toFixed(0)} m.` : "") +
-                    `</p>`;
-            } else {
-                candidatos.innerHTML = fileirasOrdenadas.map(([, lista]) => `
-                    <div class="andar-fileira">
-                        <span class="andar-fileira-nome">${escaparHtml(lista[0].nomeFileira)}</span>
-                        <div class="andar-chips">
-                            ${lista.sort((a, b) => a.colunaGlobal - b.colunaGlobal).map(q => `
-                                <button type="button" data-chave="${q.chave}"
-                                    class="andar-chip${q.chave === estado.selecionada ? " andar-chip-selecionado" : ""}${plantado(q) ? " andar-chip-plantado" : ""}${maisProximo?.quadrado.chave === q.chave ? " andar-chip-mais-proximo" : ""}">
-                                    ${q.indiceMetro}
-                                </button>`).join("")}
-                        </div>
-                    </div>
-                `).join("");
-            }
-
             this.mapaElemento.definirMetrosProximos(
-                exibidos.map(q => ({ chave: q.chave, indiceMetro: q.indiceMetro, coordenada: q.coordenada, plantado: plantado(q) })),
-                estado.selecionada,
-                chave => this._selecionarMetroAndar(chave)
+                andar.proximos.map(q => ({ chave: q.chave, indiceMetro: q.indiceMetro, coordenada: q.coordenada, plantado: plantado(q) })),
+                andar.maisProximo?.chave ?? null,
+                chave => this._abrirMetroPorChave(chave)
             );
-
-            botaoPlantar.disabled = !selecionada;
-            botaoPlantar.textContent = selecionada
-                ? `🌱 Plantar — ${selecionada.nomeFileira}, metro ${selecionada.indiceMetro}`
-                : "Escolha um metro acima";
-            atualizarBotoes();
+            atualizarEstado();
         };
 
-        this._selecionarMetroAndar = chave => {
-            if (!this._andar) return;
-            this._andar.selecionada = this._andar.selecionada === chave ? null : chave;
-            this._renderizarModoAndar();
-        };
-
-        candidatos.addEventListener("click", evento => {
-            const chip = evento.target.closest("[data-chave]");
-            if (chip) this._selecionarMetroAndar(chip.dataset.chave);
-        });
-
-        const iniciarGps = () => {
-            if (!("geolocation" in navigator)) {
-                status.textContent = "Este navegador não tem geolocalização.";
-                return;
-            }
-            this._andar.seguindo = true;
-            this._andar.primeiroSinal = true;
-            status.textContent = "Aguardando sinal do GPS…";
-            this._andar.watchId = navigator.geolocation.watchPosition(
-                posicao => {
-                    this._andar.posicao = {
-                        lat: posicao.coords.latitude,
-                        lon: posicao.coords.longitude,
-                        precisao: posicao.coords.accuracy
-                    };
-                    this.mapaElemento.definirPosicaoUsuario(this._andar.posicao);
-
-                    // Sem bússola, o rumo vem do GPS — só vale andando; parado ele é aleatório.
-                    const rumoAtivo = this._andar.rumo;
-                    if (rumoAtivo?.ativo && !rumoAtivo.temBussola
-                        && posicao.coords.speed >= VELOCIDADE_MINIMA_GPS_MS && Number.isFinite(posicao.coords.heading)) {
-                        aplicarRumo(posicao.coords.heading);
-                    }
-                    if (this._andar.seguindo) {
-                        // Zoom de aproximação só no primeiro sinal; depois vale o zoom da pessoa.
-                        this.mapaElemento.seguirPosicao(this._andar.posicao.lat, this._andar.posicao.lon, this._andar.primeiroSinal ? 21 : null);
-                        this._andar.primeiroSinal = false;
-                    }
-                    this._renderizarModoAndar();
-                },
-                erro => {
-                    pararGps();
-                    status.textContent = erro.code === erro.PERMISSION_DENIED
-                        ? "Permissão de localização negada. Libere o acesso à localização nas configurações do navegador."
-                        : "Não foi possível obter a posição. Tente de novo em campo aberto.";
-                    atualizarBotoes();
-                },
-                { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
-            );
-            atualizarBotoes();
-        };
-
-        botaoGps.addEventListener("click", () => {
-            if (this._andar.watchId != null) {
-                pararGps();
-                this._andar.posicao = null;
-                this.mapaElemento.limparModoAndar();
-                status.textContent = "GPS parado. Toque em \"Iniciar GPS\" para continuar.";
-                this._renderizarModoAndar();
-            } else {
-                iniciarGps();
-            }
-        });
-
-        botaoSeguir.addEventListener("click", () => {
-            this._andar.seguindo = true;
-            if (this._andar.posicao) {
-                this.mapaElemento.seguirPosicao(this._andar.posicao.lat, this._andar.posicao.lon);
-            }
-            atualizarBotoes();
-        });
-
-        // Arrastar o mapa com o dedo pausa o "seguir" — senão o próximo sinal de
-        // GPS puxaria o mapa de volta enquanto a pessoa olha outra parte.
-        this.mapaElemento.aoArrastarManualmente(() => {
-            if (this._andar?.seguindo) {
-                this._andar.seguindo = false;
-                atualizarBotoes();
-            }
-        });
-
-        botaoPlantar.addEventListener("click", () => {
-            const quadrado = todosOsQuadrados().find(q => q.chave === this._andar?.selecionada);
-            if (!quadrado) return;
-            this._abrirDialogoMetro(this._linhasDoSafEmEdicaoPorId.get(quadrado.linhaId), quadrado.indiceMetro, quadrado.coordenada);
-        });
-
-        this.querySelector('[data-acao="andar-saf"]').addEventListener("click", async () => {
-            this._andar = { watchId: null, seguindo: true, posicao: null, selecionada: null, quadrados: [], rumo: null };
-            await this._carregarDadosAndar();
-            if (todosOsQuadrados().length === 0) {
-                this._andar = null;
-                this.mapaElemento.limparLinhasDestacadas();
-                alert("Ainda não há linhas de plantio com metros para escolher.");
-                return;
-            }
-            // Mesmo padrão do editor de pontos: esconder de verdade o painel
-            // inferior (não só visualmente) e deixar o mapa ocupar a tela.
-            this.querySelector(".painel-inferior").hidden = true;
-            painel.hidden = false;
-            this.mapaElemento.invalidarTamanho();
-            // Só agora o mapa tem o tamanho final: enquadra tudo antes do primeiro sinal de GPS.
-            this.mapaElemento.ajustarZoomParaConteudo();
-            status.textContent = "Toque em \"Iniciar GPS\" para ver os metros perto de você.";
-            this._renderizarModoAndar();
-        });
-
-        painel.querySelector('[data-acao="andar-sair"]').addEventListener("click", async () => {
+        this._pararAndar = () => {
             pararGps();
             pararRumo();
             this._andar = null;
-            this.mapaElemento.limparModoAndar();
-            this.mapaElemento.limparLinhasDestacadas();
-            painel.hidden = true;
-            this.querySelector(".painel-inferior").hidden = false;
-            this.mapaElemento.invalidarTamanho();
-            await this.recarregarTudo();
+            faixa.hidden = true;
+            vista.classList.remove("modo-andar");
+            abas.forEach(aba => aba.classList.toggle("saf-modo-ativo", aba.dataset.modo === "atual"));
+            this.mapaElemento?.limparModoAndar();
+            this._marcarProximosNaMatriz();
+        };
+
+        const iniciarAndar = () => {
+            if (!("geolocation" in navigator)) {
+                alert("Este navegador não tem geolocalização.");
+                return;
+            }
+            this._andar = { watchId: null, seguindo: true, primeiroSinal: true, posicao: null, rumo: null, proximos: [], maisProximo: null, distanciaM: Infinity };
+            faixa.hidden = false;
+            vista.classList.add("modo-andar");
+            abas.forEach(aba => aba.classList.toggle("saf-modo-ativo", aba.dataset.modo === "andar"));
+            atualizarEstado();
+
+            this._andar.watchId = navigator.geolocation.watchPosition(
+                posicao => {
+                    const andar = this._andar;
+                    if (!andar) return;
+                    andar.posicao = { lat: posicao.coords.latitude, lon: posicao.coords.longitude, precisao: posicao.coords.accuracy };
+                    this.mapaElemento.definirPosicaoUsuario(andar.posicao);
+
+                    // Sem bússola, o rumo vem do GPS — só vale andando; parado ele é aleatório.
+                    if (andar.rumo?.ativo && !andar.rumo.temBussola
+                        && posicao.coords.speed >= VELOCIDADE_MINIMA_GPS_MS && Number.isFinite(posicao.coords.heading)) {
+                        aplicarRumo(posicao.coords.heading);
+                    }
+                    if (andar.seguindo) {
+                        // Zoom de aproximação só no primeiro sinal; depois vale o zoom da pessoa.
+                        this.mapaElemento.seguirPosicao(andar.posicao.lat, andar.posicao.lon, andar.primeiroSinal ? 20 : null);
+                        andar.primeiroSinal = false;
+                    }
+                    this._aplicarPosicaoAndar();
+                },
+                erro => {
+                    pararGps();
+                    estadoTexto.textContent = erro.code === erro.PERMISSION_DENIED
+                        ? "Permissão de localização negada. Libere o acesso à localização nas configurações do navegador."
+                        : "Não foi possível obter a posição. Tente de novo em campo aberto.";
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+            );
+        };
+
+        abas.forEach(aba => aba.addEventListener("click", () => {
+            if (aba.dataset.modo === "andar") {
+                if (!this._andar) iniciarAndar();
+            } else {
+                this._pararAndar();
+            }
+        }));
+
+        // A pessoa pegou o controle: tocar/rolar a matriz, trocar de SAF ou arrastar o mapa pausa o GPS-guia.
+        const assumirControle = () => {
+            if (this._andar?.seguindo) {
+                this._andar.seguindo = false;
+                atualizarEstado();
+            }
+        };
+        ["pointerdown", "wheel", "touchstart"].forEach(tipo =>
+            wrapper.addEventListener(tipo, assumirControle, { passive: true }));
+        this.mapaElemento.aoArrastarManualmente(assumirControle);
+
+        vista.querySelector(".saf-seletor").addEventListener("click", evento => {
+            const chip = evento.target.closest("[data-saf-id]");
+            if (!chip) return;
+            assumirControle();
+            this._escolherSaf(chip.dataset.safId);
         });
+
+        botaoVoltarSeguir.addEventListener("click", () => {
+            const andar = this._andar;
+            if (!andar) return;
+            andar.seguindo = true;
+            if (andar.posicao) this.mapaElemento.seguirPosicao(andar.posicao.lat, andar.posicao.lon);
+            this._aplicarPosicaoAndar();
+        });
+
+        // Troca de SAF/linha pelo GPS: nunca no meio de um toque da pessoa.
+        this._rolarMatrizPara = quadrado => {
+            const celula = this._celulasMatriz?.get(quadrado.chave);
+            if (!celula) return;
+            const c = celula.getBoundingClientRect();
+            const w = wrapper.getBoundingClientRect();
+            wrapper.scrollTo({
+                left: wrapper.scrollLeft + (c.left - w.left) - w.width / 2 + c.width / 2,
+                top: wrapper.scrollTop + (c.top - w.top) - w.height / 2 + c.height / 2,
+                behavior: "smooth"
+            });
+        };
+
+        this._marcarProximosNaMatriz = () => {
+            if (!this._celulasMatriz) return;
+            const perto = new Set((this._andar?.proximos ?? []).map(q => q.chave));
+            const maisProximo = this._andar?.maisProximo?.chave;
+            this._celulasMatriz.forEach((celula, chave) => {
+                celula.classList.toggle("quadrado-metro-perto", perto.has(chave));
+                celula.classList.toggle("quadrado-metro-gps", chave === maisProximo);
+            });
+        };
+
+        this._abrirMetroPorChave = chave => {
+            const quadrado = this._quadradosSaf.find(q => q.chave === chave);
+            if (!quadrado) return;
+            assumirControle();
+            this._abrirDialogoMetro(this._linhasDoSafEmEdicaoPorId.get(quadrado.linhaId), quadrado.indiceMetro, quadrado.coordenada);
+        };
     }
 
     _wireSaf() {
@@ -1355,48 +1484,6 @@ export class PainelProjeto extends HTMLElement {
         this._wireEditorSaf();
     }
 
-    _renderizarListaSafs() {
-        const listaElemento = this.querySelector(".lista-safs");
-        const resumoElemento = this.querySelector(".saf-resumo-total");
-
-        this.querySelector('[data-acao="andar-saf"]').hidden =
-            !this.safsComLinhas.some(({ linhas }) => linhas.length > 0);
-
-        if (this.safsComLinhas.length === 0) {
-            listaElemento.innerHTML = `<li class="lista-vazia">Nenhum SAF importado ainda.</li>`;
-            resumoElemento.textContent = "";
-            return;
-        }
-
-        const totalLinhas = this.safsComLinhas.reduce((soma, { linhas }) => soma + linhas.length, 0);
-        const totalMetros = this.safsComLinhas.reduce(
-            (soma, { linhas }) => soma + linhas.reduce((s, l) => s + l.comprimento_calculado_m, 0),
-            0
-        );
-        resumoElemento.textContent =
-            `${this.safsComLinhas.length} SAF(s) · ${totalLinhas} linha(s) no total · ${totalMetros.toFixed(0)} m no total`;
-
-        listaElemento.innerHTML = this.safsComLinhas.map(({ saf, linhas }) => {
-            const comprimentoTotal = linhas.reduce((soma, l) => soma + l.comprimento_calculado_m, 0);
-            return `
-                <li class="item-saf" data-id="${saf.id}">
-                    <button type="button" class="item-saf-botao" data-acao="abrir-saf">
-                        <strong>${escaparHtml(saf.nome)}</strong>
-                        <span>${linhas.length} linha(s) · ${comprimentoTotal.toFixed(0)} m</span>
-                    </button>
-                </li>
-            `;
-        }).join("");
-
-        listaElemento.querySelectorAll('[data-acao="abrir-saf"]').forEach(botao => {
-            botao.addEventListener("click", () => {
-                const safId = botao.closest(".item-saf").dataset.id;
-                const { saf } = this.safsComLinhas.find(item => item.saf.id === safId);
-                this._abrirEditorSaf(saf);
-            });
-        });
-    }
-
     /**
      * Matriz com todas as linhas de um SAF de uma vez, alinhadas por posição
      * geográfica real (ver docs/especificacao.md secao 14.5a) — uma linha
@@ -1404,12 +1491,6 @@ export class PainelProjeto extends HTMLElement {
      * única fileira da matriz, com o vão real entre as partes em branco.
      */
     _wireEditorSaf() {
-        const secaoNormal = this.querySelector(".secoes-padrao");
-        const secaoEditor = this.querySelector(".secao-editor-saf");
-        const tituloEditor = this.querySelector(".editor-saf-titulo");
-        const infoEditor = this.querySelector(".editor-saf-info");
-        const matrizElemento = this.querySelector(".matriz-saf");
-
         const dialogoPlanta = this.querySelector(".dialogo-planta-metro");
         const tituloPlanta = this.querySelector(".planta-metro-titulo");
         const listaPlantasMetro = this.querySelector(".lista-plantas-metro");
@@ -1425,13 +1506,6 @@ export class PainelProjeto extends HTMLElement {
                 .map(e => `<option value="${escaparHtml(e.nome_popular)}">${escaparHtml(e.nome_cientifico ?? "")}</option>`)
                 .join("");
         };
-
-        this.querySelector('[data-acao="fechar-editor-saf"]').addEventListener("click", () => {
-            secaoEditor.hidden = true;
-            secaoNormal.hidden = false;
-            this.mapaElemento.limparLinhasDestacadas();
-            this._safEmEdicao = null;
-        });
 
         this.querySelector('[data-acao="fechar-planta-metro"]').addEventListener("click", () => dialogoPlanta.close());
 
@@ -1481,49 +1555,6 @@ export class PainelProjeto extends HTMLElement {
             this._abrirDialogoMetro(this._linhaAtualParaPlanta, this._metroEmEdicao);
         });
 
-        this._abrirEditorSaf = async saf => {
-            this._safEmEdicao = saf;
-            secaoNormal.hidden = true;
-            secaoEditor.hidden = false;
-            await this._recarregarEditorSaf();
-        };
-
-        this._recarregarEditorSaf = async () => {
-            const saf = this._safEmEdicao;
-            const linhas = await plantaTerraDB.listarLinhasDaSaf(saf.id);
-            const plantasPorLinha = await Promise.all(linhas.map(l => plantaTerraDB.listarPlantasDaLinha(l.id)));
-
-            this._linhasDoSafEmEdicaoPorId = new Map(linhas.map(l => [l.id, l]));
-            this._plantasPorLinhaEmEdicao = new Map(linhas.map((l, indice) => [l.id, plantasPorLinha[indice]]));
-
-            const matriz = calcularMatrizSaf(linhas);
-            const totalPlantas = plantasPorLinha.reduce((soma, lista) => soma + lista.length, 0);
-
-            tituloEditor.textContent = saf.nome;
-            infoEditor.textContent =
-                `${linhas.length} linha(s) · ${matriz.linhasLogicas.length} fileira(s) na matriz · ` +
-                `${totalPlantas} planta(s) cadastrada(s)`;
-
-            this._renderizarMatriz(matriz, matrizElemento);
-
-            const partesParaMapa = linhas.map(linha => {
-                const plantasPorMetro = agruparPlantasPorMetro(this._plantasPorLinhaEmEdicao.get(linha.id));
-                const { segmentos } = dividirEmMetros(linha.geometria);
-                const pontosPlantados = [...plantasPorMetro.entries()]
-                    .map(([indiceMetro, plantasDoMetro]) => ({
-                        indiceMetro,
-                        coordenada: segmentos[indiceMetro]?.meio,
-                        plantas: plantasDoMetro
-                    }))
-                    .filter(ponto => ponto.coordenada);
-                return { linha, pontosPlantados };
-            });
-            this.mapaElemento.destacarLinhas(partesParaMapa);
-        };
-
-        // Plantas mudam tanto no editor de um SAF quanto no modo Andar (projeto todo): recarrega o que estiver aberto.
-        this._recarregarAposMudarPlantas = () => this._andar ? this._carregarDadosAndar() : this._recarregarEditorSaf();
-
         this._abrirDialogoMetro = (linha, indiceMetro, coordenada) => {
             this._linhaAtualParaPlanta = linha;
             this._metroEmEdicao = indiceMetro;
@@ -1571,8 +1602,8 @@ export class PainelProjeto extends HTMLElement {
 
     _renderizarMatriz(matriz, matrizElemento) {
         const numeroColunas = Math.max(matriz.colunaMaximaGlobal - matriz.colunaMinimaGlobal + 1, 1);
-        matrizElemento.style.gridTemplateColumns = `minmax(110px, max-content) repeat(${numeroColunas}, 36px)`;
-        matrizElemento.style.gridTemplateRows = `repeat(${matriz.linhasLogicas.length}, 36px)`;
+        matrizElemento.style.gridTemplateColumns = `minmax(110px, max-content) repeat(${numeroColunas}, var(--tam-celula, 36px))`;
+        matrizElemento.style.gridTemplateRows = `repeat(${matriz.linhasLogicas.length}, var(--tam-celula, 36px))`;
 
         const coordenadaPorCelula = new Map();
         let html = "";
@@ -1601,7 +1632,10 @@ export class PainelProjeto extends HTMLElement {
 
         matrizElemento.innerHTML = html;
 
+        // chave "linhaId|indiceMetro" → botão: o modo Andar marca/rola sem redesenhar a matriz.
+        this._celulasMatriz = new Map();
         matrizElemento.querySelectorAll(".quadrado-metro").forEach(botao => {
+            this._celulasMatriz.set(`${botao.dataset.linhaId}|${botao.dataset.indiceMetro}`, botao);
             botao.addEventListener("click", () => {
                 const linha = this._linhasDoSafEmEdicaoPorId.get(botao.dataset.linhaId);
                 const indiceMetro = Number(botao.dataset.indiceMetro);

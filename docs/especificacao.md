@@ -401,21 +401,29 @@ Elementos de contexto **não têm estado do usuário** (diferente de `linha_plan
 
 No mapa (`mapa_projeto.js#definirElementosContexto`), são desenhados em cinza neutro, por baixo de todas as outras camadas, sem interação — só para dar contexto visual. Na exportação (GeoJSON/KML/KMZ, §14.4), entram como uma pasta `"Contexto"` separada, mantendo o ciclo de importar → editar → exportar coerente com o resto do app.
 
-### 14.9 Modo "Andar na agrofloresta" (GPS ao vivo, projeto inteiro)
+### 14.9 Modo "Andar" na vista SAF (GPS guia a matriz)
 
-Na seção "Sistemas Agroflorestais" do painel do projeto (o menu principal dos SAFs, não o editor de um SAF individual), o botão "📍 Andar pela agrofloresta" abre um modo de tela cheia **do projeto inteiro** — a pessoa começa a andar e pode ir para qualquer SAF, sem escolher um antes (o botão só aparece se há linhas de plantio). É um modo de tela cheia (mesmo padrão do editor de pontos da trilha: o painel inferior é escondido de verdade e o mapa ocupa a tela, com uma faixa compacta embaixo) para escolher o quadrado de plantio andando pelo campo.
+O "Andar" não é mais uma tela de mapa cheio: é um **modo da vista SAF** (§14.10). A matriz de fileiras (§14.5a) continua sendo a protagonista; o mapa é só uma janela de conferência.
 
-- **O GPS só liga quando a pessoa pede** ("▶ Iniciar GPS" / "⏹ Parar GPS"), por causa da bateria. Usa `watchPosition` com `enableHighAccuracy`, direto — sem a estabilização por amostras do §5, que serve a pontos únicos.
-- **Mapa:** ponto azul com círculo do tamanho da precisão informada. No primeiro sinal aproxima para o zoom 21 (1 m ≈ 15 px); depois respeita o zoom escolhido pela pessoa. Segue a posição até a pessoa arrastar o mapa — aí o "seguir" pausa e aparece "🎯 Seguir" para retomar.
-- **Vários candidatos, não um só.** O GPS de celular erra alguns metros, mais que o lado de um quadrado (1 m). Por isso o app mostra **todos os metros dentro de um raio** da posição (`geo/proximidade_metros.js#encontrarMetrosProximos`) em **todos os SAFs do projeto**, e a pessoa escolhe o certo olhando a linha de plantio. O raio acompanha a precisão do aparelho, com piso de 3 m e teto de 12 m (`raioDeBuscaM`); acima de 15 m de imprecisão o painel avisa "sinal fraco".
-- **Seleção:** botões de ≥44 px agrupados por fileira da matriz (cada SAF tem a sua matriz, §14.5a; uma linha de botões por fileira, por SAF e depois na ordem da matriz — havendo mais de um SAF, o nome da fileira leva o do SAF, ex: "SAF Sul · Linha 1"; as posições ficam estáveis enquanto o GPS oscila). Verde = já tem planta; borda destacada = metro mais próximo da posição; amarelo = selecionado. No mapa os candidatos são bolinhas pequenas (para não se sobreporem) e só o selecionado leva o número. Tocar de novo no selecionado desmarca. **A escolha não some se o GPS oscilar** e o metro sair do raio.
-- **"🌱 Plantar — Linha X, metro N"** abre o mesmo diálogo de planta da matriz (§14.6), cujo título leva o nome do SAF quando o projeto tem mais de um. O mapa só enquadra todas as linhas na entrada; depois de adicionar uma planta ele não reenquadra (`destacarLinhas(..., { ajustarZoom: false })`), para não desfazer o zoom da pessoa.
-- **"🧭 Girar com você" (frente para cima).** Botão que faz o mapa girar para que o lado em que a pessoa olha fique para cima — em campo ajuda a ver qual fileira está à frente. Desligado por padrão (norte para cima); o botão vira "🧭 Norte para cima" quando ligado.
-  - **Fonte do rumo:** a **bússola do aparelho** (`gps/captador_rumo.js`, `DeviceOrientation`). No Android (Chrome) usa `deviceorientationabsolute`, sem permissão; no iOS Safari a permissão da bússola só pode ser pedida dentro de um toque, por isso o pedido sai direto do clique do botão. O rumo é calculado com a inclinação do aparelho (`geo/rumo.js#calcularRumoBussola`, fórmula do exemplo da W3C), então vale com o celular na mão e não só deitado, e compensa a tela girada (`screen.orientation.angle`).
-  - **Reserva:** sem bússola (ou permissão negada), usa a **direção do GPS** (`coords.heading`) — só quando a velocidade passa de 0,7 m/s, porque parado o rumo do GPS é aleatório; o painel avisa para andar reto alguns passos.
-  - **Suavização:** a bússola chega dezenas de vezes por segundo e treme — média exponencial de ângulos pelo caminho mais curto (359°→1° anda 2°, não 358°), com no máximo 10 giros/s e ignorando mudanças menores que 2°. A bússola magnética erra de 10° a 20° perto de ferro, motores e linhas de energia.
-  - **Enquanto ligado**, o giro com os dedos e o botão de bússola de "voltar ao norte" ficam desativados (brigariam com o sensor); ao desligar, o mapa volta ao norte. O rumo é independente do GPS: parar o GPS não desliga o giro. Texto e números desenhados por nós não giram com o mapa. O ponto da pessoa fica no centro da tela (não deslocado para baixo, como em apps de navegação).
-- "Sair" desliga o GPS e o giro e volta ao painel do projeto; deixar a tela do projeto também desliga.
+- **Layout:** mapa pequeno em cima (≈26% da altura) com botão "⤢/⤡" para ampliar (≈62%) e voltar; embaixo, seletor de SAF (chips, só se há mais de um) e a matriz do SAF atual ocupando o resto da tela, com rolagem própria. No modo Andar as células crescem para 44 px.
+- **Abas "Atual" | "📍 Andar".** "Atual" é só a matriz. "📍 Andar" liga o GPS (`watchPosition`, `enableHighAccuracy`, direto — sem a estabilização do §5) e mostra uma faixa de estado. Voltar a "Atual" desliga GPS e giro.
+- **O GPS guia:** a cada posição, marca na matriz os metros dentro do raio de busca (`geo/proximidade_metros.js`, raio 3–12 m conforme a precisão; borda azul) e o mais próximo (amarelo); se a pessoa está a ≤ 25 m de alguma fileira, **troca sozinho para o SAF dela e rola a matriz** até centralizar o metro mais próximo. Mais longe que isso a faixa avisa a distância e nada rola. Acima de 15 m de imprecisão avisa "sinal fraco".
+- **A pessoa pode pegar o controle:** tocar/rolar a matriz, trocar de SAF, tocar numa célula ou arrastar o mapa pausa a guia (a faixa fica amarela: "Você está no controle") — as marcações continuam atualizando, mas nada rola nem troca. "🎯 Voltar a seguir" retoma na hora.
+- **Tocar numa célula** (em qualquer modo) abre o diálogo de planta (§14.6) e centraliza o mapa naquele metro. Metros próximos também aparecem como bolinhas no mapa; tocar numa abre o mesmo diálogo.
+- **Mapa:** ponto azul com círculo de precisão; primeiro sinal aproxima ao zoom 20; depois vale o zoom da pessoa. Adicionar planta não reenquadra o mapa.
+- **"🧭 Girar com você" (frente para cima)** — vive na faixa do Andar, desligado por padrão.
+  - **Fonte do rumo:** bússola do aparelho (`gps/captador_rumo.js`, `DeviceOrientation`; Android `deviceorientationabsolute`; iOS pede permissão dentro do toque do botão). Rumo com compensação de inclinação (`geo/rumo.js#calcularRumoBussola`) e da tela girada.
+  - **Reserva:** sem bússola, `coords.heading` do GPS, só acima de 0,7 m/s.
+  - **Suavização:** média exponencial de ângulos pelo caminho mais curto, no máximo 10 giros/s, ignorando < 2°. A bússola erra 10°–20° perto de ferro/motores.
+  - Ligado, o giro com os dedos e a bússola de "voltar ao norte" ficam desativados; ao desligar, volta ao norte.
+- Deixar a tela do projeto também desliga GPS e giro.
+
+### 14.10 Estrutura do projeto: entrada, vistas e último lugar
+
+Ao abrir um projeto, a tela de entrada mostra o **mapa da propriedade inteira** (perímetro, estações, linhas de SAF, elementos de contexto importados) e **três cartões** com resumo: Perímetro, Estações de nível (inclui curvas de nível) e Sistemas Agroflorestais. Cada um abre sua **vista**; "←" numa vista volta à entrada, e na entrada volta à lista de projetos.
+
+- A vista SAF contém "Importar KMZ/KML", as abas Atual/Andar (§14.9), o seletor de SAF e a matriz.
+- **Último lugar:** `localStorage["plantaterra:ultimo-lugar"]` guarda `{projetoId, vista, safId}`. Ao abrir o app (não a cada volta à lista) ele vai direto a esse projeto e vista, e ao SAF que estava aberto; "←" na entrada de um projeto apaga a memória. O Andar nunca reinicia sozinho (o GPS só liga por toque).
 
 ## 15. Roadmap de fases futuras (fora de escopo desta implementação)
 

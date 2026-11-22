@@ -49,6 +49,16 @@ plantaTerraDB.addEventListener(DBBase.EVENTO_VERSAO_ALTERADA, () => {
 
 garantirArmazenamentoPersistente();
 
+// Ao abrir o app (não a cada volta à lista), vai direto ao último lugar onde a pessoa estava.
+function reabrirUltimoLugar() {
+    if (location.hash && location.hash !== "#/") return;
+    try {
+        const lugar = JSON.parse(localStorage.getItem("plantaterra:ultimo-lugar"));
+        if (lugar?.projetoId) location.hash = `#/projeto/${lugar.projetoId}`;
+    } catch { /* sem armazenamento: abre a lista normalmente */ }
+}
+reabrirUltimoLugar();
+
 function renderizarRota() {
     const hash = location.hash || "#/";
     const correspondenciaProjeto = hash.match(/^#\/projeto\/(.+)$/);
