@@ -54,7 +54,7 @@ export class MatrizSaf extends HTMLElement {
         this.connectedCallback();
         const numeroColunas = Math.max(matriz.colunaMaximaGlobal - matriz.colunaMinimaGlobal + 1, 1);
         // Linha 1 da grade = cabeçalho com os números de metro; coluna 1 = nome da fileira.
-        this._grade.style.gridTemplateColumns = `minmax(110px, max-content) repeat(${numeroColunas}, var(--tam-celula, 36px))`;
+        this._grade.style.gridTemplateColumns = `max-content repeat(${numeroColunas}, var(--tam-celula, 36px))`;
         this._grade.style.gridTemplateRows = `var(--alt-cabecalho, 28px) repeat(${matriz.linhasLogicas.length}, var(--tam-celula, 36px))`;
 
         this._coordenadaPorChave = new Map();

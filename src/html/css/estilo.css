@@ -695,7 +695,7 @@ andar-gps[hidden] {
     align-items: center;
     left: 0;
     z-index: 2;
-    padding-right: 10px;
+    padding-right: 6px;
 }
 
 .matriz-saf-cabecalho,
@@ -1201,7 +1201,7 @@ campo-coordenada {
 }
 
 /*
- * Modo foco (tocou num metro): o mapa cresce, a matriz some e o painel de plantas
+ * Modo foco (tocou num metro): o mapa mantém o tamanho da vista SAF, a matriz some e o painel de plantas
  * (<dialogo-planta-metro>, não modal) ocupa o resto da tela, no fluxo — o mapa
  * continua visível e usável com o rótulo "Linha X · metro N".
  */
@@ -1212,11 +1212,6 @@ dialogo-planta-metro {
 painel-projeto.foco-metro .painel-inferior,
 painel-projeto.foco-metro .painel-inferior.painel-saf {
     display: none;
-}
-
-painel-projeto.vista-saf-ativa.foco-metro .mapa-caixa {
-    flex: 0 0 44dvh;
-    min-height: 0;
 }
 
 dialog.dialogo-planta-metro[open] {
