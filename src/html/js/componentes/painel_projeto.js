@@ -692,6 +692,8 @@ export class PainelProjeto extends HTMLElement {
         this._vista = "entrada";
 
         this._irParaVista = async vista => {
+            this.querySelector("dialogo-planta-metro")?.fechar();
+            this.classList.remove("foco-metro");
             if (this._vista === "saf" && vista !== "saf") {
                 this._pararAndar();
                 this.mapaElemento.limparLinhasDestacadas();
@@ -734,7 +736,21 @@ export class PainelProjeto extends HTMLElement {
         });
 
         // "←": numa vista volta para a entrada; na entrada volta para a lista de projetos.
-        this.querySelector(".botao-voltar").addEventListener("click", evento => {
+        this.querySelector(".cabecalho-projeto > .botao-voltar").addEventListener("click", evento => {
+            // "←" fecha primeiro a camada que estiver por cima (painel de plantas, editor de pontos);
+            // sem isso a tela mudava por baixo e a camada ficava presa por cima da entrada.
+            const painelPlantas = this.querySelector("dialogo-planta-metro");
+            if (painelPlantas?.aberto) {
+                evento.preventDefault();
+                painelPlantas.fechar();
+                return;
+            }
+            if (this._editorPontos?.aberto) {
+                evento.preventDefault();
+                // Mesmo caminho do botão "Fechar" do editor (confirma se houver alterações).
+                this._editorPontos.querySelector('[data-acao="fechar-editar-pontos"]').click();
+                return;
+            }
             if (this._vista !== "entrada") {
                 evento.preventDefault();
                 this._irParaVista("entrada");
