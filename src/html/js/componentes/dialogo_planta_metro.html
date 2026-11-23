@@ -1,4 +1,8 @@
 <dialog class="dialogo-planta-metro">
+    <header class="cabecalho-detalhe-metro">
+        <strong>{{ titulo }}</strong>
+        <button type="button" class="botao-icone" aria-label="Fechar o detalhe do metro" title="Fechar" data-on='{"click":"fechar"}'>✕</button>
+    </header>
     <ul class="lista-plantas-metro">
         <template data-if="vazia">
             <li class="lista-vazia">Nenhuma planta cadastrada neste metro ainda.</li>

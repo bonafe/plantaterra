@@ -127,6 +127,8 @@ button {
     min-width: 44px;
     border: none;
     background: transparent;
+    /* Sem cor própria o botão usa a do navegador (preta) — sumia sobre o fundo escuro do modo escuro. */
+    color: var(--cor-texto);
     font-size: 1.4rem;
     cursor: pointer;
 }
@@ -144,6 +146,7 @@ button {
 .botao-excluir {
     border: none;
     background: transparent;
+    color: var(--cor-texto);
     font-size: 1.2rem;
     cursor: pointer;
     padding: 8px;
@@ -152,6 +155,7 @@ button {
 .botao-icone-inline {
     border: none;
     background: transparent;
+    color: var(--cor-texto);
     font-size: 1rem;
     cursor: pointer;
     padding: 6px 8px;
@@ -1263,6 +1267,50 @@ painel-projeto.foco-metro .painel-inferior.painel-saf {
     display: none;
 }
 
+/* Só aparece na tela larga (ver a media query do modo foco, mais abaixo). */
+.cabecalho-detalhe-metro {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.cabecalho-detalhe-metro .botao-icone {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+/* O detalhe do metro se adapta à própria largura (coluna larga no desktop): cards em várias colunas, formulário em duas. */
+dialog.dialogo-planta-metro {
+    container: detalhe-metro / inline-size;
+}
+
+@container detalhe-metro (min-width: 560px) {
+    .formulario-planta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 12px;
+        align-items: start;
+    }
+
+    .formulario-planta[hidden] {
+        display: none;
+    }
+
+    .formulario-planta > .formulario-planta-titulo,
+    .formulario-planta > .campo-especie,
+    .formulario-planta > .aviso-conflito-planta,
+    .formulario-planta > .acoes-formulario {
+        grid-column: 1 / -1;
+    }
+}
+
 dialog.dialogo-planta-metro[open] {
     position: static;
     flex: 1 1 auto;
@@ -1276,6 +1324,64 @@ dialog.dialogo-planta-metro[open] {
     border-radius: 0;
     box-shadow: none;
     border-top: 1px solid var(--cor-borda);
+}
+
+
+/*
+ * Tela larga (desktop): tocar num metro NÃO esconde a matriz — a navegação de metros fica à esquerda e o detalhe do
+ * metro (plantas, formulário) ao lado, à direita; o mapa continua em cima, com a largura toda. Tocar em outro metro
+ * da matriz troca o detalhe sem fechar nada. No celular (tela estreita ou baixa) vale o modo foco acima.
+ */
+@media (min-width: 900px) and (min-height: 560px) {
+    painel-projeto.foco-metro .tela-painel-projeto {
+        display: grid;
+        /* A matriz só precisa de uma faixa estreita (ela rola de lado); o resto é do detalhe, que tem cards e formulário. */
+        grid-template-columns: minmax(340px, 38%) minmax(0, 1fr);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+    }
+
+    painel-projeto.foco-metro .tela-painel-projeto > .cabecalho-app,
+    painel-projeto.foco-metro .tela-painel-projeto > .mapa-caixa {
+        grid-column: 1 / -1;
+    }
+
+    painel-projeto.foco-metro .tela-painel-projeto > .cabecalho-app { grid-row: 1; }
+    painel-projeto.foco-metro .tela-painel-projeto > .mapa-caixa { grid-row: 2; }
+
+    painel-projeto.foco-metro .painel-inferior,
+    painel-projeto.foco-metro .painel-inferior.painel-saf {
+        display: flex;
+        grid-column: 1;
+        grid-row: 3;
+        min-height: 0;
+    }
+
+    /* O detalhe do metro vira a coluna da direita, com rolagem própria. */
+    painel-projeto.foco-metro dialog.dialogo-planta-metro[open] {
+        grid-column: 2;
+        grid-row: 3;
+        height: auto;
+        align-self: stretch;
+        border-top: none;
+        border-left: 1px solid var(--cor-borda);
+    }
+
+    /* Na tela larga o detalhe é uma coluna: ganha título e um ✕ (no celular o cabeçalho do projeto já faz isso). */
+    painel-projeto.foco-metro .cabecalho-detalhe-metro {
+        display: flex;
+    }
+
+    /* Com a largura toda, o mapa em tira de 150 px ficava pouco útil: ganha um pouco mais de altura. */
+    painel-projeto.vista-saf-ativa.foco-metro .mapa-caixa {
+        flex: 0 0 30dvh;
+        min-height: 200px;
+    }
+
+    /* Os demais filhos (diálogos, editores — vazios enquanto fechados) não disputam as células da grade. */
+    painel-projeto.foco-metro .tela-painel-projeto > :not(.cabecalho-app):not(.mapa-caixa):not(.painel-inferior):not(dialogo-planta-metro) {
+        grid-column: 1 / -1;
+        grid-row: 4;
+    }
 }
 
 
