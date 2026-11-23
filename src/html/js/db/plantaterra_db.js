@@ -1,7 +1,9 @@
 import { DBBase } from "./db_base.js";
+import { aplicarFicha, fichaDeBruta, registroProprio } from "../dominio/biblioteca_unificada.js";
+import { normalizarNome } from "../dominio/biblioteca_plantas.js";
 
 const NOME_BANCO = "PlantaTerraDB";
-const VERSAO = 4;
+const VERSAO = 7;
 
 const funcoesDeMigracao = [
     banco => {
@@ -35,8 +37,87 @@ const funcoesDeMigracao = [
     banco => {
         const osEspecie = banco.createObjectStore("especie", { keyPath: "id" });
         osEspecie.createIndex("index_nome_popular", "nome_popular", { unique: false });
-    }
+    },
+    banco => {
+        // v5 (nunca publicada com dados): primeira forma do catálogo, só espécies. A v6 a substitui.
+        banco.createObjectStore("catalogo", { keyPath: "id" });
+    },
+    banco => {
+        // Catálogo nacional (dado de referência importado, ~166 mil táxons — ver §15.2). É regenerável a partir do
+        // arquivo, então a v6 recria o store em vez de migrar registros. Os índices servem à listagem paginada por
+        // nível (espécie, sinônimo, gênero…) e reino, à busca por palavra e à navegação entre registros.
+        if (banco.objectStoreNames.contains("catalogo")) banco.deleteObjectStore("catalogo");
+        const osCatalogo = banco.createObjectStore("catalogo", { keyPath: "id" });
+        osCatalogo.createIndex("index_cientifico", "cn", { unique: false });
+        osCatalogo.createIndex("index_nivel_cientifico", ["nv", "cn"], { unique: false });
+        osCatalogo.createIndex("index_nivel_reino_cientifico", ["nv", "r", "cn"], { unique: false });
+        osCatalogo.createIndex("index_busca", "busca", { unique: false, multiEntry: true });
+        osCatalogo.createIndex("index_pai", "pi", { unique: false });
+        osCatalogo.createIndex("index_aceito", "ai", { unique: false });
+        osCatalogo.createIndex("index_original", "oi", { unique: false });
+        osCatalogo.createIndex("index_familia", "f", { unique: false });
+    },
+    (banco, transacao) => migrarBibliotecaUnificada(banco, transacao)
 ];
+
+const pedir = request => new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+});
+
+/**
+ * v7: a biblioteca vira uma só (docs/especificacao.md §15). As espécies do store `especie` (a biblioteca pessoal) passam a
+ * ser FICHAS no registro do táxon correspondente do catálogo — achado pelo id do catálogo ou pelo nome científico —, ou
+ * registros próprios quando não há correspondência. As plantas dos projetos são religadas ao novo id; no fim o store
+ * antigo some. Roda dentro da transação de upgrade (só pedidos do IndexedDB, para ela não fechar no meio).
+ */
+function migrarBibliotecaUnificada(banco, transacao) {
+    const catalogo = transacao.objectStore("catalogo");
+    if (!catalogo.indexNames.contains("index_rica")) catalogo.createIndex("index_rica", "rica", { unique: false });
+    if (!banco.objectStoreNames.contains("especie")) return;
+
+    (async () => {
+        const antigas = await pedir(transacao.objectStore("especie").getAll());
+        const novoId = new Map();
+        for (const antiga of antigas) {
+            const { id, criado_em, atualizado_em, ...resto } = antiga;
+            const ficha = fichaDeBruta(resto);
+            if (!ficha) continue;
+            // O que a pessoa digitou à mão conta como editado (uma importação nova não passa por cima); o que veio de
+            // um catálogo (tem fonte ou id de catálogo) pode ser atualizado por uma importação nova.
+            const editada = !ficha.fonte_primaria && !ficha.catalogo_id;
+
+            let alvo = typeof ficha.catalogo_id === "string" ? await pedir(catalogo.get(ficha.catalogo_id)) : undefined;
+            if (!alvo && ficha.nome_cientifico) {
+                const candidatos = await pedir(catalogo.index("index_cientifico").getAll(IDBKeyRange.only(normalizarNome(ficha.nome_cientifico))));
+                alvo = candidatos.find(r => r.st === "A" && r.k === "sp") ?? candidatos.find(r => r.st !== "S" && r.k === "sp");
+                const sinonimo = alvo ? null : candidatos.find(r => r.st === "S" && r.ai);
+                if (sinonimo) alvo = await pedir(catalogo.get(sinonimo.ai));
+            }
+            const registro = alvo
+                ? aplicarFicha(alvo, ficha, { substituir: !alvo.ficha, editada })
+                : { ...registroProprio(ficha, id), ...(editada ? { ficha_editada: 1 } : {}) };
+            await pedir(catalogo.put(registro));
+            if (registro.id !== id) novoId.set(id, registro.id);
+        }
+
+        if (novoId.size) {
+            await new Promise((resolve, reject) => {
+                const cursor = transacao.objectStore("planta_linha").openCursor();
+                cursor.onerror = () => reject(cursor.error);
+                cursor.onsuccess = () => {
+                    const atual = cursor.result;
+                    if (!atual) return resolve();
+                    const novo = novoId.get(atual.value.especie_id);
+                    if (novo) atual.update({ ...atual.value, especie_id: novo });
+                    atual.continue();
+                };
+            });
+        }
+        banco.deleteObjectStore("especie");
+    })().catch(erro => console.error("Migração da biblioteca para o modelo único falhou (o store antigo foi mantido):", erro));
+}
+
 
 class PlantaTerraDB extends DBBase {
     constructor() {
@@ -334,40 +415,7 @@ class PlantaTerraDB extends DBBase {
         return plantas.sort((a, b) => a.indice_metro - b.indice_metro);
     }
 
-    // ---- especie (biblioteca de plantas, global — não pertence a nenhum projeto) ----
-
-    async criarEspecie({ nomePopular, nomeCientifico = null, ciclo = null, espacamentoRecomendadoM = null, notas = null, ...extras }) {
-        const agora = Date.now();
-        const especie = {
-            id: this.gerarId(),
-            nome_popular: nomePopular,
-            nome_cientifico: nomeCientifico,
-            ciclo,
-            espacamento_recomendado_m: espacamentoRecomendadoM,
-            notas,
-            // Campos do catálogo botânico (nomes_populares, familia, origem, ocorrencia_estados…): ver §15.1.
-            ...extras,
-            criado_em: agora,
-            atualizado_em: agora
-        };
-        await this.salvar("especie", especie);
-        return especie;
-    }
-
-    async atualizarEspecie(especie) {
-        especie.atualizado_em = Date.now();
-        return this.salvar("especie", especie);
-    }
-
-    async listarEspecies() {
-        const especies = await this.obterTodos("especie");
-        return especies.sort((a, b) => a.nome_popular.localeCompare(b.nome_popular, "pt-BR"));
-    }
-
-    /** Remove só do catálogo: plantas já cadastradas em linhas mantêm o nome em texto (`planta_linha.especie`). */
-    async removerEspecie(id) {
-        return this.remover("especie", id);
-    }
+    // A biblioteca de plantas (especies, fichas, catálogo) vive no store `catalogo` e tem módulo próprio: db/biblioteca.js.
 
     // ---- elemento_contexto ----
 

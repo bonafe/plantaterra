@@ -117,6 +117,14 @@ function mapaDeTextos(valor, maximoChaves, tamanhoMaximo) {
     return entradas.some(([, texto]) => texto) ? Object.fromEntries(entradas) : null;
 }
 
+/** Fotos da espécie: [{ src (data URL em base64), legenda, credito }] — só imagens embutidas, até 12, cada uma até ~300 KB. */
+function fotosOuVazio(valor) {
+    if (!Array.isArray(valor)) return [];
+    return valor.slice(0, 12)
+        .map(f => ({ src: typeof f?.src === "string" ? f.src : "", legenda: textoOuNulo(f?.legenda, 200), credito: textoOuNulo(f?.credito, 160) }))
+        .filter(f => /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(f.src) && f.src.length <= 400000);
+}
+
 /** Qualquer dado que o catálogo trouxer e o PlantaTerra ainda não conhece: guardado como veio (limitado em tamanho). */
 function extrasOuNulo(valor) {
     if (!valor || typeof valor !== "object" || Array.isArray(valor)) return null;
@@ -145,12 +153,12 @@ export function sanearEspecie(bruto) {
     if (!nomePopular) return null;
 
     const espacamento = Number(bruto.espacamento_recomendado_m);
-    const ocorrenciaTexto = textoOuNulo(bruto.ocorrencia_texto, 1500);
+    const ocorrenciaTexto = textoOuNulo(bruto.ocorrencia_texto, 8000);
 
     // Estados: os da lista, se houver; senão os citados no texto de ocorrência.
     const estados = listaDeTextos(bruto.ocorrencia_estados, 27, 2).filter(uf => UFS_VALIDAS.has(uf));
     // As seções conhecidas e qualquer outra que o catálogo traga (texto longo) ficam em `detalhes`.
-    const detalhes = mapaDeTextos(bruto.detalhes, 30, 4000);
+    const detalhes = mapaDeTextos(bruto.detalhes, 30, 20000);
 
     return {
         nomePopular,
@@ -196,11 +204,13 @@ export function sanearEspecie(bruto) {
         rotulos_originais: mapaDeTextos(bruto.rotulos_originais, 20, 120),
         extras: extrasOuNulo(bruto.extras),
         fontes: listaDeTextos(bruto.fontes, 10, 300).filter(url => /^https?:\/\//i.test(url)),
-        catalogo_id: textoOuNulo(bruto.catalogo_id, 80)
+        catalogo_id: textoOuNulo(bruto.catalogo_id, 80),
+        fotos: fotosOuVazio(bruto.fotos),
+        referencias: listaDeTextos(bruto.referencias, 400, 700)
     };
 }
 
-// ---- Catálogo botânico agroflorestal (arquivo "catalogo_botanico_agroflorestal.json") ----
+// ---- Catálogo botânico agroflorestal (arquivo "02_agroflorestal_curado.json") ----
 
 /** O arquivo é o catálogo botânico (lista `plantas` com `identificacao`), e não uma biblioteca do PlantaTerra? */
 export function ehCatalogoBotanico(pacote) {
@@ -250,7 +260,8 @@ export function especieDeRegistroCatalogo(registro) {
     }
 
     return {
-        nome_popular: nomes[0] ?? null,
+        // Sem nome popular, o nome científico faz de nome principal (a biblioteca exige um).
+        nome_popular: nomes[0] ?? identificacao.nome_cientifico ?? null,
         nomes_populares: nomes,
         nome_cientifico: identificacao.nome_cientifico,
         autoria: identificacao.autoria,
@@ -298,6 +309,8 @@ export function especieDeRegistroCatalogo(registro) {
         fontes,
         notas: registro?.observacoes_de_curadoria,
         extras,
-        catalogo_id: registro?.id
+        catalogo_id: registro?.id,
+        fotos: registro?.fotos,
+        referencias: registro?.referencias
     };
 }

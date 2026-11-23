@@ -1,7 +1,8 @@
 import { plantaTerraDB } from "./plantaterra_db.js";
 import { baixarArquivo, slug } from "./util_arquivo.js";
-import { serializarEspecies, mesclarEspecies, importarBiblioteca } from "./exportador_biblioteca.js";
-import { chaveEspecie, ehCatalogoBotanico, nomesDaEspecie, normalizarNome } from "../dominio/biblioteca_plantas.js";
+import { importarBiblioteca } from "./exportador_biblioteca.js";
+import { incorporarInstantaneos, instantaneosDasEspecies, mesclarFichas } from "./biblioteca.js";
+import { chaveEspecie, ehCatalogoBotanico } from "../dominio/biblioteca_plantas.js";
 
 // Reexportados porque outros módulos (exportador_geoespacial) importam daqui.
 export { baixarArquivo, slug };
@@ -9,7 +10,8 @@ export { baixarArquivo, slug };
 /**
  * Backup fiel (round-trip completo dentro do próprio PlantaTerra) — ver
  * docs/especificacao.md secao 8. Um mesmo arquivo carrega quantos projetos a
- * pessoa escolher, e opcionalmente a biblioteca de plantas.
+ * pessoa escolher, mais as FICHAS DAS ESPÉCIES QUE ELES USAM (`especies`, só a foto
+ * de capa): o backup fica enxuto e o projeto abre em outro aparelho mesmo sem o catálogo.
  */
 const FORMATO = "plantaterra-backup";
 const FORMATO_VERSAO = 1;
@@ -29,18 +31,11 @@ async function coletarProjeto(projetoId) {
         throw new Error("Projeto não encontrado.");
     }
 
-    const especiesPorId = new Map((await plantaTerraDB.listarEspecies()).map(e => [e.id, e]));
-
     const safs = await Promise.all(safsComLinhas.map(async ({ saf, linhas }) => ({
         saf,
         linhas: await Promise.all(linhas.map(async linha => ({
             linha,
-            // `especie_nome_cientifico` acompanha o vínculo: o mesmo nome popular pode ser de espécies
-            // diferentes, então ao restaurar a planta se religa pela dupla popular + científico.
-            plantas: (await plantaTerraDB.listarPlantasDaLinha(linha.id)).map(planta => ({
-                ...planta,
-                especie_nome_cientifico: especiesPorId.get(planta.especie_id)?.nome_cientifico ?? null
-            }))
+            plantas: await plantaTerraDB.listarPlantasDaLinha(linha.id)
         })))
     })));
 
@@ -53,25 +48,28 @@ async function coletarProjeto(projetoId) {
     };
 }
 
-export async function montarBackup({ projetoIds, incluirBiblioteca }) {
+export async function montarBackup({ projetoIds }) {
     const projetos = [];
     for (const id of projetoIds) {
         projetos.push(await coletarProjeto(id));
     }
+
+    // As espécies que as plantas desses projetos usam, em instantâneo leve (ficha sem fotos, só a capa).
+    const idsDeEspecies = projetos.flatMap(p => p.safs.flatMap(s => s.linhas.flatMap(l => l.plantas.map(pl => pl.especie_id))));
 
     return {
         formato: FORMATO,
         formato_versao: FORMATO_VERSAO,
         exportado_em: Date.now(),
         projetos,
-        biblioteca: incluirBiblioteca ? serializarEspecies(await plantaTerraDB.listarEspecies()) : null
+        especies: await instantaneosDasEspecies(idsDeEspecies)
     };
 }
 
-export async function exportarBackup({ projetoIds, incluirBiblioteca }) {
-    const pacote = await montarBackup({ projetoIds, incluirBiblioteca });
+export async function exportarBackup({ projetoIds }) {
+    const pacote = await montarBackup({ projetoIds });
     const data = new Date().toISOString().slice(0, 10);
-    const soUmProjeto = pacote.projetos.length === 1 && !incluirBiblioteca;
+    const soUmProjeto = pacote.projetos.length === 1;
     const nomeArquivo = soUmProjeto
         ? `plantaterra-${slug(pacote.projetos[0].projeto.nome)}-${data}.json`
         : `plantaterra-backup-${data}.json`;
@@ -80,14 +78,14 @@ export async function exportarBackup({ projetoIds, incluirBiblioteca }) {
 }
 
 export async function exportarProjeto(projetoId) {
-    return exportarBackup({ projetoIds: [projetoId], incluirBiblioteca: false });
+    return exportarBackup({ projetoIds: [projetoId] });
 }
 
 /**
  * Lê um arquivo do PlantaTerra e o importa: backup completo, projeto avulso
- * de versões antigas do app (sem campo "formato") ou só a biblioteca.
- * Nunca sobrescreve nada: projetos entram como novos (com novos UUIDs) e a
- * biblioteca é mesclada sem alterar espécies que já existem.
+ * de versões antigas do app (sem campo "formato") ou só fichas de biblioteca.
+ * Nunca sobrescreve nada: projetos entram como novos (com novos UUIDs) e as
+ * espécies do backup entram na biblioteca só se ainda não estão lá.
  *
  * @returns {Promise<{ projetos: object[], biblioteca: {adicionadas, jaExistentes, invalidas} | null }>}
  */
@@ -106,7 +104,8 @@ export async function importarArquivo(arquivoOuTexto) {
     }
 
     let entradas;
-    let especiesDoPacote = null;
+    let instantaneos = null;
+    let especiesLegadas = null;
 
     if (pacote?.formato === FORMATO) {
         if (pacote.formato_versao !== FORMATO_VERSAO) {
@@ -116,7 +115,9 @@ export async function importarArquivo(arquivoOuTexto) {
             throw new Error("o arquivo não tem uma lista de projetos.");
         }
         entradas = pacote.projetos;
-        especiesDoPacote = Array.isArray(pacote.biblioteca) ? pacote.biblioteca : null;
+        instantaneos = Array.isArray(pacote.especies) ? pacote.especies : null;
+        // Backups antigos levavam a biblioteca inteira, no formato de espécie; as plantas se religam pelo nome.
+        especiesLegadas = Array.isArray(pacote.biblioteca) ? pacote.biblioteca : null;
     } else if (pacote && !pacote.formato && pacote.formato_versao === 1 && pacote.projeto) {
         // Arquivo de projeto avulso das primeiras versões: só perímetros e estações.
         entradas = [{ projeto: pacote.projeto, trilhas: pacote.trilhas, estacoes: pacote.estacoes }];
@@ -130,30 +131,22 @@ export async function importarArquivo(arquivoOuTexto) {
         }
     }
 
-    // Biblioteca primeiro: as plantas dos projetos se religam às espécies pelo nome.
-    const resumoBiblioteca = especiesDoPacote ? await mesclarEspecies(especiesDoPacote) : null;
-
-    const especiesLocais = await plantaTerraDB.listarEspecies();
-    const especiePorChave = new Map(especiesLocais.map(e => [chaveEspecie(e.nome_popular, e.nome_cientifico), e.id]));
-    const especiesPorNome = new Map();
-    for (const e of especiesLocais) {
-        for (const nome of nomesDaEspecie(e)) {
-            const chave = normalizarNome(nome);
-            especiesPorNome.set(chave, [...(especiesPorNome.get(chave) ?? []), e.id]);
-        }
-    }
+    // Biblioteca primeiro: as espécies que os projetos usam precisam existir antes de as plantas apontarem para elas.
+    if (instantaneos) await incorporarInstantaneos(instantaneos);
+    const resumoLegado = especiesLegadas ? await mesclarFichas(especiesLegadas) : null;
+    const idPorChave = resumoLegado?.idPorChave ?? new Map();
 
     const nomesEmUso = new Set((await plantaTerraDB.listarProjetos()).map(p => p.nome));
 
     const projetosImportados = [];
     for (const entrada of entradas) {
-        projetosImportados.push(await importarEntradaDeProjeto(entrada, especiePorNome, nomesEmUso));
+        projetosImportados.push(await importarEntradaDeProjeto(entrada, idPorChave, nomesEmUso));
     }
 
-    return { projetos: projetosImportados, biblioteca: resumoBiblioteca };
+    return { projetos: projetosImportados, biblioteca: resumoLegado };
 }
 
-async function importarEntradaDeProjeto(entrada, especiePorNome, nomesEmUso) {
+async function importarEntradaDeProjeto(entrada, idPorChave, nomesEmUso) {
     const mapaIds = new Map();
     const novoId = idAntigo => {
         if (!mapaIds.has(idAntigo)) {
@@ -198,16 +191,11 @@ async function importarEntradaDeProjeto(entrada, especiePorNome, nomesEmUso) {
             await plantaTerraDB.salvar("linha_plantio", linhaNova);
 
             for (const planta of plantas ?? []) {
-                // O vínculo com a biblioteca é refeito pelo nome: o id da espécie
-                // neste aparelho não é o mesmo do aparelho de origem.
-                // Primeiro pela dupla popular + científico; backups antigos (sem o científico) só se religam
-                // pelo nome quando ele identifica uma espécie só.
-                let especieId = null;
-                if (planta.especie_id) {
-                    const candidatas = especiesPorNome.get(normalizarNome(planta.especie)) ?? [];
-                    especieId = especiePorChave.get(chaveEspecie(planta.especie, planta.especie_nome_cientifico))
-                        ?? (candidatas.length === 1 ? candidatas[0] : null);
-                }
+                // Backup novo: `especie_id` é o id do registro da biblioteca e as espécies vieram junto (já incorporadas).
+                // Backup antigo (levava a biblioteca no formato de espécie): religa pela dupla popular + científico.
+                const especieId = planta.especie_nome_cientifico !== undefined || !planta.especie_id
+                    ? (idPorChave.get(chaveEspecie(planta.especie, planta.especie_nome_cientifico)) ?? null)
+                    : planta.especie_id;
                 const { especie_nome_cientifico, ...plantaSemAuxiliar } = planta;
                 await plantaTerraDB.salvar("planta_linha", {
                     ...plantaSemAuxiliar,

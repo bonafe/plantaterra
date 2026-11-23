@@ -23,11 +23,12 @@
                             <strong><template data-for="s in o.nomeTrechos : k"><span data-class='{"destaque-busca":"s.m"}'>{{ s.t }}</span></template></strong>
                             <em><template data-for="s in o.cienTrechos : k"><span data-class='{"destaque-busca":"s.m"}'>{{ s.t }}</span></template></em>
                             <small class="opcao-alias" data-bind='{"hidden":"o.semAlias"}'>também: <template data-for="s in o.aliasTrechos : k"><span data-class='{"destaque-busca":"s.m"}'>{{ s.t }}</span></template></small>
+                            <small class="opcao-alias opcao-origem-catalogo" data-bind='{"hidden":"o.semTag"}'>⭐ ficha completa</small>
                         </button>
                     </li>
                 </template>
             </ul>
-            <p class="ajuda-campo" data-bind='{"hidden":"semAviso"}'>Não está na biblioteca: fica só como texto neste metro. Cadastre a espécie em 🌱 Biblioteca de plantas para reaproveitar.</p>
+            <p class="ajuda-campo" data-bind='{"hidden":"semAviso"}'>Não está na biblioteca: fica só como texto neste metro.</p>
         </div>
         <label>Quantidade (opcional)
             <input type="number" name="quantidade" min="1" step="1" />

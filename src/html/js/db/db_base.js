@@ -32,7 +32,7 @@ export class DBBase extends EventTarget {
                 this.funcoesDeMigracao.forEach((migrar, indice) => {
                     const versaoDaMigracao = indice + 1;
                     if (versaoDaMigracao > versaoAnterior) {
-                        migrar(banco);
+                        migrar(banco, request.transaction);
                     }
                 });
             };

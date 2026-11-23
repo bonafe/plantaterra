@@ -1014,6 +1014,69 @@ dialog select {
     width: 100%;
 }
 
+.abas-biblioteca {
+    display: flex;
+    gap: 4px;
+    margin: 4px 0 8px;
+    border-bottom: 2px solid var(--cor-borda, #ccd3c8);
+}
+
+.aba-biblioteca {
+    flex: 1;
+    min-height: 44px;
+    padding: 6px 8px;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+.aba-biblioteca[aria-selected="true"] {
+    border-bottom-color: var(--cor-primaria, #2f6b3a);
+    font-weight: 600;
+}
+
+.aba-contagem {
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.filtros-catalogo {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 8px;
+}
+
+.filtros-catalogo label {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 120px;
+    font-size: 0.8em;
+    gap: 2px;
+}
+
+.filtros-catalogo select {
+    min-height: 40px;
+    font: inherit;
+}
+
+.progresso-catalogo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+}
+
+.mostrar-mais {
+    width: 100%;
+    min-height: 44px;
+    margin: 8px 0 16px;
+}
+
 .busca-biblioteca-caixa {
     margin-bottom: 12px;
 }
@@ -1624,4 +1687,484 @@ campo-limpavel input[type="search"]::-webkit-search-cancel-button {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+/* Ficha de táxon do catálogo nacional: selos, hierarquia e registros relacionados como links */
+.selos-taxon {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 10px;
+}
+
+.selo-taxon {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #e8efe6;
+    font-size: 0.78rem;
+}
+
+.aviso-sinonimo {
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border-left: 4px solid #b7791f;
+    background: #fffaf0;
+}
+
+.hierarquia-taxon {
+    margin: 0 0 10px;
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+}
+
+.taxon-link {
+    min-height: 40px;
+    padding: 4px 8px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: var(--cor-primaria);
+    text-align: left;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.taxon-link small {
+    color: var(--cor-texto-suave);
+    text-decoration: none;
+}
+
+.lista-taxons,
+.lista-referencias {
+    margin: 4px 0 8px;
+    padding-left: 18px;
+}
+
+.lista-referencias li {
+    margin-bottom: 6px;
+    overflow-wrap: anywhere;
+    font-size: 0.9rem;
+}
+
+.rotulo-relacao {
+    margin: 8px 0 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* Galeria de fotos no detalhe da espécie */
+.detalhe-fotos {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 12px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+}
+
+.detalhe-fotos[hidden] {
+    display: none;
+}
+
+.detalhe-fotos figure {
+    flex: 0 0 min(72%, 280px);
+    margin: 0;
+    scroll-snap-align: start;
+}
+
+.detalhe-fotos img {
+    display: block;
+    width: 100%;
+    height: 200px;
+    object-fit: contain;
+    border-radius: var(--raio);
+    background: #eef2ec;
+}
+
+.detalhe-fotos figcaption {
+    margin-top: 2px;
+    font-size: 0.75rem;
+    color: var(--cor-texto-suave);
+}
+
+/* Filtros da biblioteca: barra, chips ativos e painel */
+.barra-filtros {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin: 0 0 8px;
+}
+
+.barra-filtros .botao-secundario {
+    min-height: 44px;
+    white-space: nowrap;
+}
+
+.ordenacao {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    font-size: 0.8em;
+    gap: 2px;
+}
+
+.ordenacao select {
+    min-height: 44px;
+    font: inherit;
+}
+
+.filtros-minhas[hidden] {
+    display: none;
+}
+
+.chips-filtros-ativos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.chip-ativo {
+    min-height: 32px;
+    padding: 2px 10px;
+    border: 1px solid var(--cor-primaria);
+    border-radius: 999px;
+    background: #e8efe6;
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.resumo-resultado {
+    margin: 6px 0;
+    font-size: 0.85rem;
+    color: var(--cor-texto-suave);
+}
+
+.botao-link {
+    border: 0;
+    background: transparent;
+    padding: 4px 6px;
+    font: inherit;
+    color: var(--cor-primaria);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.botao-link[hidden] {
+    display: none;
+}
+
+.filtros-catalogo .filtro-opcao.filtro-popular {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    flex-basis: 100%;
+}
+
+.painel-filtros {
+    width: min(560px, calc(100vw - 16px));
+    max-height: 92dvh;
+    padding: 0;
+    border: 0;
+    border-radius: 14px 14px 0 0;
+    overflow: hidden;
+    margin: auto auto 0;
+}
+
+.painel-filtros[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+.filtros-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--cor-borda);
+}
+
+.filtros-cabecalho h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.filtros-corpo {
+    flex: 1;
+    min-height: 0;
+    padding: 4px 16px;
+    overflow-y: auto;
+}
+
+.filtros-rodape {
+    padding: 10px 16px;
+    border-top: 1px solid var(--cor-borda);
+    background: var(--cor-fundo-pagina, #fff);
+}
+
+.filtros-rodape .botao-primario {
+    width: 100%;
+    min-height: 48px;
+}
+
+.secao-filtro {
+    border-bottom: 1px solid var(--cor-borda);
+    padding: 4px 0;
+}
+
+.secao-filtro summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.secao-marcados {
+    color: var(--cor-primaria);
+    font-weight: 400;
+}
+
+.chips-filtro {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 10px;
+}
+
+.chip-filtro {
+    display: inline-flex;
+    position: relative;
+}
+
+.chip-filtro input {
+    position: absolute;
+    opacity: 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+}
+
+.chip-filtro span,
+.chip-botao {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 40px;
+    padding: 4px 12px;
+    border: 1px solid var(--cor-borda);
+    border-radius: 999px;
+    background: #fff;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.chip-filtro input:checked + span {
+    border-color: var(--cor-primaria);
+    background: var(--cor-primaria);
+    color: #fff;
+}
+
+.chip-filtro input:focus-visible + span {
+    outline: 3px solid var(--cor-primaria);
+    outline-offset: 2px;
+}
+
+.chip-filtro small {
+    opacity: 0.7;
+}
+
+.chip-mes span {
+    min-width: 46px;
+    justify-content: center;
+    padding: 4px 8px;
+}
+
+.faixa-altura {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 6px 0;
+}
+
+.faixa-altura label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.faixa-altura input {
+    width: 84px;
+    min-height: 44px;
+    font: inherit;
+}
+
+.filtro-nota,
+.filtro-vazio {
+    margin: 0 0 6px;
+    font-size: 0.8rem;
+    color: var(--cor-texto-suave);
+}
+
+.filtro-opcao {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+}
+
+.filtro-opcao select {
+    min-height: 44px;
+    font: inherit;
+    flex: 1;
+}
+
+/* O painel de filtros usa o <label> em chips compactos: sem o espaçamento/negrito padrão dos formulários */
+.painel-filtros label {
+    margin: 0;
+    font-weight: 400;
+}
+
+.painel-filtros input[type="number"] {
+    display: inline-block;
+    width: 84px;
+    margin: 0;
+}
+
+.painel-filtros select {
+    margin: 0;
+}
+
+.painel-filtros .chip-filtro {
+    margin: 0;
+}
+
+.painel-filtros .chip-filtro span {
+    font-weight: 500;
+}
+
+/* Ficha de espécie / de táxon: uma tela (com "←" e migalhas no cabeçalho), não um diálogo */
+.vista-ficha[hidden],
+.painel-biblioteca[hidden],
+.ficha-especie[hidden],
+ficha-taxon[hidden] {
+    display: none;
+}
+
+.vista-ficha {
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 12px 16px 0;
+}
+
+.ficha-especie .detalhe-nome,
+.ficha-taxon .detalhe-nome {
+    margin: 0;
+}
+
+.ficha-especie .detalhe-cientifico,
+.ficha-taxon .detalhe-cientifico {
+    margin: 2px 0 12px;
+    color: var(--cor-texto-suave);
+}
+
+.ficha-taxon {
+    display: block;
+}
+
+/* Ações da ficha sempre à vista na parte de baixo, com o texto longo rolando por trás */
+.acoes-ficha {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 0 12px;
+    background: var(--cor-fundo-pagina, #fff);
+    border-top: 1px solid var(--cor-borda);
+}
+
+.acoes-ficha button {
+    min-height: 44px;
+}
+
+.ficha-especie .detalhe-fotos img {
+    height: 240px;
+}
+
+/* Título da ficha com lápis e lixeira à direita (em vez de uma barra de botões embaixo) */
+.ficha-titulo {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.ficha-titulo-texto {
+    flex: 1;
+    min-width: 0;
+}
+
+.ficha-icones {
+    display: flex;
+    flex-shrink: 0;
+    gap: 4px;
+}
+
+.ficha-icones .botao-icone {
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    background: #fff;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.filtro-aviso {
+    margin: 8px 0;
+    padding: 8px 10px;
+    border-left: 4px solid #b7791f;
+    background: #fffaf0;
+    font-size: 0.82rem;
+}
+
+.separador-lista {
+    list-style: none;
+    margin: 10px 0 4px;
+    padding: 4px 2px;
+    border-bottom: 1px solid var(--cor-borda);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--cor-texto-suave);
+}
+
+.acoes-exportar {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.acoes-exportar button {
+    min-height: 56px;
+    text-align: left;
+}
+
+.acoes-exportar button small {
+    display: block;
+    font-weight: 400;
+    opacity: 0.8;
+}
+
+.linha-campos {
+    display: flex;
+    gap: 12px;
+}
+
+.linha-campos label {
+    flex: 1;
 }

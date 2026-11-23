@@ -3,7 +3,7 @@ import { descreverIdadePlantio, formatarDataSimples, parsearDataBr } from "./uti
 import { acharPlantaIgual } from "../dominio/saf.js";
 import "./card_planta.js";
 import "./campo_limpavel.js";
-import { nomesDaEspecie, normalizarNome, segmentarDestaque, textosDeBusca } from "../dominio/biblioteca_plantas.js";
+import { nomesDaEspecie, normalizarNome, segmentarDestaque } from "../dominio/biblioteca_plantas.js";
 
 /**
  * <dialogo-planta-metro>: diálogo das plantas de um metro de uma linha de
@@ -14,8 +14,11 @@ import { nomesDaEspecie, normalizarNome, segmentarDestaque, textosDeBusca } from
  * estado reativo: { titulo, vazia, plantas (cards), opcoes (autocomplete), formularioAberto, ... }.
  *
  * Entrada:
- *   especies = [{ id, nome_popular, nome_cientifico }]  sugestões da biblioteca (opcional)
- *   abrir({ titulo, plantas })   abre (ou, se já aberto, só atualiza título e lista). NÃO é modal
+ *   buscarEspecies = async texto => [especie…]  busca na biblioteca enquanto se digita (espécies com ficha completa vêm
+ *                                primeiro; o diálogo não conhece o banco — quem usa injeta a busca). Cada espécie:
+ *                                { id, nome_popular, nome_cientifico, nomes_populares, rica, fotos }
+ *   abrir({ titulo, plantas, especies })   `especies`: Map id → espécie das plantas listadas (capa e nome científico dos
+ *                                cards). Abre (ou, se já aberto, só atualiza título e lista). NÃO é modal
  *                                (show, não showModal): vira um painel no fluxo da tela e quem usa
  *                                decide o layout — o painel do projeto deixa o mapa grande acima dele
  *   fechar()
@@ -26,7 +29,8 @@ import { nomesDaEspecie, normalizarNome, segmentarDestaque, textosDeBusca } from
  *                        planta (parcial=false: o formulário substitui tudo) ou "atualizar a existente" ao repetir a espécie
  *                        no mesmo metro (parcial=true: só o que foi preenchido substitui)
  *   "planta-adicionada"  detail { especie, especieId|null, quantidade|null, sementes|null, observacao|null, dataPlantio|null }
- *                        especieId só vem preenchido se o nome digitado (sem caixa/acento) é de uma espécie da biblioteca
+ *                        especieId (id do registro da biblioteca) só vem preenchido se a pessoa escolheu uma sugestão ou se o
+ *                        nome digitado (sem caixa/acento) identifica uma espécie só
  *   "planta-removida"    detail { id }
  *   "fechado"            o diálogo foi fechado (por qualquer meio)
  */
@@ -34,7 +38,9 @@ export class DialogoPlantaMetro extends ReactiveComponent {
 
     constructor() {
         super({ templateUrl: "./dialogo_planta_metro.html", shadowDom: false }, import.meta.url);
-        this._especies = [];
+        this._especies = new Map();
+        this.buscarEspecies = null;
+        this._resultados = [];
     }
 
     connectedCallback() {
@@ -67,21 +73,15 @@ export class DialogoPlantaMetro extends ReactiveComponent {
 
     get aberto() { return this._dialogo?.open ?? false; }
 
-    set especies(lista) {
-        this._especies = lista ?? [];
-    }
-
-    /** Espécie da biblioteca de uma planta: pelo vínculo (especie_id) ou, nas antigas, pelo nome — só se o nome identifica uma espécie só. */
+    /** Espécie da biblioteca de uma planta, pelo vínculo (especie_id); planta antiga sem vínculo fica só com o nome em texto. */
     _especieDaPlanta(planta) {
-        const porId = this._especies.find(e => e.id === planta.especie_id);
-        if (porId) return porId;
-        const porNome = this._especies.filter(e => nomesDaEspecie(e).some(nome => normalizarNome(nome) === normalizarNome(planta.especie)));
-        return porNome.length === 1 ? porNome[0] : undefined;
+        return this._especies.get(planta.especie_id);
     }
 
-    async abrir({ titulo, plantas }) {
+    async abrir({ titulo, plantas, especies = new Map() }) {
         await this.whenLoaded();
         this._plantas = plantas;
+        this._especies = especies;
         this.state = {
             ...this.state,
             titulo,
@@ -93,6 +93,7 @@ export class DialogoPlantaMetro extends ReactiveComponent {
                     card: {
                         nome: p.especie,
                         cientifico: daBiblioteca?.nome_cientifico ?? "",
+                        foto: daBiblioteca?.fotos?.[0]?.src ?? null,
                         linhas: [
                             p.data_plantio ? descreverIdadePlantio(p.data_plantio) : "",
                             [p.quantidade ? `${p.quantidade} planta(s)` : "", p.sementes ? `${p.sementes} semente(s)` : "", p.observacao ?? ""].filter(Boolean).join(" · ")
@@ -144,7 +145,7 @@ export class DialogoPlantaMetro extends ReactiveComponent {
         campos.data_plantio.value = planta.data_plantio ? formatarDataSimples(planta.data_plantio) : "";
         this._definirFormularioAberto(true, planta);
         // A espécie já vinculada continua a escolhida (mesmo que outra tenha o mesmo nome popular).
-        this._escolhida = this._especies.find(e => e.id === planta.especie_id) ?? null;
+        this._escolhida = this._especies.get(planta.especie_id) ?? null;
         campos.especie.dispatchEvent(new Event("input", { bubbles: true }));
         this._formulario.scrollIntoView({ block: "nearest" });
     }
@@ -182,39 +183,41 @@ export class DialogoPlantaMetro extends ReactiveComponent {
      * (mesmo nome popular, espécies diferentes), a lista continua aberta para a pessoa desambiguar.
      */
     aoDigitarEspecie(evento) {
-        const consulta = normalizarNome(evento.target.value);
+        const texto = evento.target.value;
+        const consulta = normalizarNome(texto);
         // A escolha da lista só vale enquanto o texto continuar sendo o nome da espécie escolhida.
         if (this._escolhida && normalizarNome(this._escolhida.nome_popular) !== consulta) this._escolhida = null;
-        if (this._escolhida) {
+        clearTimeout(this._temporizadorBusca);
+        if (this._escolhida || consulta.length < 2 || !this.buscarEspecies) {
+            this._resultados = [];
             this.state = { ...this.state, opcoes: [], semOpcoes: true, semAviso: true };
             return;
         }
-
-        const exatas = this._especies.filter(e => nomesDaEspecie(e).some(nome => normalizarNome(nome) === consulta));
-        const comecaCom = e => nomesDaEspecie(e).some(nome => normalizarNome(nome).startsWith(consulta));
-        const opcoes = !consulta || exatas.length === 1 ? [] : this._especies
-            .filter(e => textosDeBusca(e).some(texto => normalizarNome(texto).includes(consulta)))
-            .sort((a, b) => Number(comecaCom(b)) - Number(comecaCom(a)))
-            .slice(0, 8)
-            .map(e => {
+        this._temporizadorBusca = setTimeout(async () => {
+            const encontradas = await this.buscarEspecies(texto);
+            // A pessoa seguiu digitando (ou escolheu algo) enquanto a busca rodava: resultado velho, descarta.
+            if (this._escolhida || normalizarNome(this._formulario.elements.especie.value) !== consulta) return;
+            this._resultados = encontradas;
+            const exatas = encontradas.filter(e => nomesDaEspecie(e).some(nome => normalizarNome(nome) === consulta));
+            const opcoes = exatas.length === 1 ? [] : encontradas.slice(0, 12).map(e => {
                 // Achou por outro nome popular? Mostra qual, para a pessoa entender por que a opção apareceu.
-                const alias = normalizarNome(e.nome_popular).includes(consulta)
-                    ? null
-                    : nomesDaEspecie(e).find(nome => normalizarNome(nome).includes(consulta));
+                const alias = normalizarNome(e.nome_popular).includes(consulta) ? null : nomesDaEspecie(e).find(nome => normalizarNome(nome).includes(consulta));
                 return {
                     id: e.id,
                     nomeTrechos: segmentarDestaque(e.nome_popular, consulta).map((t, k) => ({ ...t, k })),
-                    cienTrechos: segmentarDestaque(e.nome_cientifico ?? "", consulta).map((t, k) => ({ ...t, k })),
+                    cienTrechos: !e.nome_cientifico || e.nome_popular === e.nome_cientifico ? [] : segmentarDestaque(e.nome_cientifico, consulta).map((t, k) => ({ ...t, k })),
                     semAlias: !alias,
-                    aliasTrechos: alias ? segmentarDestaque(alias, consulta).map((t, k) => ({ ...t, k })) : []
+                    aliasTrechos: alias ? segmentarDestaque(alias, consulta).map((t, k) => ({ ...t, k })) : [],
+                    semTag: !e.rica
                 };
             });
-        this.state = { ...this.state, opcoes, semOpcoes: opcoes.length === 0, semAviso: !consulta || exatas.length > 0 || opcoes.length > 0 };
+            this.state = { ...this.state, opcoes, semOpcoes: opcoes.length === 0, semAviso: consulta.length < 3 || encontradas.length > 0 };
+        }, 150);
     }
 
     escolherOpcao(evento, escopo) {
         const campo = this._formulario.elements.especie;
-        this._escolhida = this._especies.find(e => e.id === escopo.o.id) ?? null;
+        this._escolhida = this._resultados.find(e => e.id === escopo.o.id) ?? null;
         campo.value = this._escolhida?.nome_popular ?? campo.value;
         // "input" para o botão Limpar aparecer; a escolha feita acima fecha a lista de opções.
         campo.dispatchEvent(new Event("input", { bubbles: true }));
@@ -253,7 +256,7 @@ export class DialogoPlantaMetro extends ReactiveComponent {
                 const especie = dados.get("especie").trim();
         const chave = normalizarNome(especie);
         // A espécie escolhida na lista vale; senão, o nome só vincula se identifica uma espécie única.
-        const porNome = this._especies.filter(e => nomesDaEspecie(e).some(nome => normalizarNome(nome) === chave));
+        const porNome = this._resultados.filter(e => nomesDaEspecie(e).some(nome => normalizarNome(nome) === chave));
         const doCatalogo = this._escolhida && normalizarNome(this._escolhida.nome_popular) === chave
             ? this._escolhida
             : (porNome.length === 1 ? porNome[0] : null);

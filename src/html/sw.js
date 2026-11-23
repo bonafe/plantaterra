@@ -1,6 +1,6 @@
 // Mantenha sincronizado com VERSAO_APP em js/versao.js (rodapé do app) —
 // bump os dois juntos a cada release, ver docs/especificacao.md secao 10.
-const VERSAO_APP = "64";
+const VERSAO_APP = "71";
 const VERSAO_CACHE = `plantaterra-v${VERSAO_APP}`;
 const CACHE_TILES = "plantaterra-tiles-v1";
 
@@ -15,6 +15,8 @@ const ARQUIVOS_DO_APP = [
     "./js/componentes/matriz_saf.js",
     "./js/componentes/andar_gps.js",
     "./js/componentes/card_planta.js",
+    "./js/componentes/ficha_taxon.js",
+    "./js/componentes/painel_filtros_especies.js",
     "./js/componentes/campo_limpavel.js",
     "./js/componentes/dialogo_planta_metro.js",
     "./js/componentes/dialogo_planta_metro.html",
@@ -42,12 +44,17 @@ const ARQUIVOS_DO_APP = [
     "./js/feedback_whatsapp.js",
     "./js/db/db_base.js",
     "./js/db/exportador_biblioteca.js",
+    "./js/db/catalogo_nacional.js",
+    "./js/db/biblioteca.js",
     "./js/db/util_arquivo.js",
     "./js/db/exportador_projeto.js",
     "./js/db/exportador_geoespacial.js",
     "./js/db/plantaterra_db.js",
     "./js/dominio/biblioteca_plantas.js",
     "./js/dominio/estados_brasil.js",
+    "./js/dominio/catalogo_nacional.js",
+    "./js/dominio/biblioteca_unificada.js",
+    "./js/dominio/filtros_especies.js",
     "./js/dominio/nivelamento.js",
     "./js/dominio/saf.js",
     "./js/geo/curvas_de_nivel.js",

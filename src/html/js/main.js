@@ -99,12 +99,20 @@ reabrirUltimoLugar();
 function renderizarRota() {
     const hash = location.hash || "#/";
     const correspondenciaProjeto = hash.match(/^#\/projeto\/(.+)$/);
+    const naBiblioteca = hash === "#/biblioteca" || hash.startsWith("#/biblioteca/");
+
+    // Lista ↔ ficha de uma espécie é a mesma tela: só o hash muda, sem recriá-la (preserva filtros, páginas e rolagem).
+    const bibliotecaAberta = app.querySelector("tela-biblioteca");
+    if (naBiblioteca && bibliotecaAberta) {
+        bibliotecaAberta.aoMudarRota();
+        return;
+    }
 
     app.innerHTML = "";
 
     if (hash === "#/apoiar") {
         app.appendChild(document.createElement("tela-apoiar"));
-    } else if (hash === "#/biblioteca") {
+    } else if (naBiblioteca) {
         app.appendChild(document.createElement("tela-biblioteca"));
     } else if (correspondenciaProjeto) {
         const painel = document.createElement("painel-projeto");

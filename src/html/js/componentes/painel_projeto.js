@@ -15,6 +15,9 @@ import { areaPoligonoMetros2 } from "../geo/geodesia.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
 import { agruparPlantasPorMetro, aplicarDadosNaPlanta } from "../dominio/saf.js";
+import { buscarCatalogo } from "../db/catalogo_nacional.js";
+import { obterRegistros } from "../db/biblioteca.js";
+import { especieDoRegistro } from "../dominio/biblioteca_unificada.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
 import { escaparHtml, formatarArea, formatarData } from "./util_dom.js";
 import "./mapa_projeto.js";
@@ -1082,10 +1085,13 @@ export class PainelProjeto extends HTMLElement {
             });
 
             // A biblioteca é global e pode ter mudado em outra tela: relê a cada abertura.
-            if (!dialogo.aberto) dialogo.especies = await plantaTerraDB.listarEspecies();
+            const plantasDoMetro = (this._plantasPorLinhaEmEdicao.get(linha.id) ?? []).filter(p => p.indice_metro === indiceMetro);
+            // As espécies dessas plantas (capa e nome científico dos cards) vêm da biblioteca, que é global e pode ter mudado.
+            const registros = await obterRegistros(plantasDoMetro.map(p => p.especie_id));
             await dialogo.abrir({
                 titulo: `${prefixoSaf}${rotuloLinha} — metro ${indiceMetro}`,
-                plantas: (this._plantasPorLinhaEmEdicao.get(linha.id) ?? []).filter(p => p.indice_metro === indiceMetro)
+                plantas: plantasDoMetro,
+                especies: new Map([...registros].map(([id, registro]) => [id, especieDoRegistro(registro)]))
             });
             this._renderizarMigalhas();
         };
@@ -1098,6 +1104,9 @@ export class PainelProjeto extends HTMLElement {
             const maisProximo = this._ultimaAvaliacaoAndar?.maisProximo;
             if (andar?.seguindo && maisProximo) this.querySelector("matriz-saf").rolarPara(maisProximo.chave);
         });
+
+        // Sugestões da biblioteca enquanto se digita a espécie (as com ficha completa primeiro).
+        dialogo.buscarEspecies = async texto => (await buscarCatalogo(texto, { limite: 12, filtros: { nivel: "especie" } })).itens.map(especieDoRegistro);
 
         dialogo.addEventListener("planta-adicionada", async evento => {
             await plantaTerraDB.criarPlanta({

@@ -33,11 +33,7 @@ export class ListaProjetos extends HTMLElement {
                 <dialog class="dialogo-backup">
                     <form method="dialog" class="formulario-backup">
                         <h2>Backup</h2>
-                        <p class="ajuda-campo">Escolha o que vai para o arquivo. Ele guarda tudo: perímetros, estações e leituras, SAF, linhas e plantas.</p>
-                        <label class="campo-checkbox">
-                            <input type="checkbox" name="biblioteca" />
-                            <span class="rotulo-biblioteca-backup"></span>
-                        </label>
+                        <p class="ajuda-campo">Escolha o que vai para o arquivo. Ele guarda tudo: perímetros, estações e leituras, SAF, linhas e plantas — e a ficha das espécies que cada projeto usa (com a foto de capa), para o projeto abrir completo em outro aparelho.</p>
                         <div class="backup-cabecalho-projetos">
                             <strong>Projetos</strong>
                             <button type="button" class="botao-icone-inline" data-acao="alternar-todos-backup">Marcar/desmarcar todos</button>
@@ -104,8 +100,9 @@ export class ListaProjetos extends HTMLElement {
                     const partes = [];
                     if (projetos.length) partes.push(`${projetos.length} projeto(s)`);
                     if (biblioteca) {
-                        partes.push(`biblioteca: ${biblioteca.adicionadas} espécie(s) adicionada(s)` +
-                            (biblioteca.jaExistentes ? `, ${biblioteca.jaExistentes} já existia(m)` : ""));
+                        partes.push(`biblioteca: ${biblioteca.adicionadas} ficha(s) adicionada(s)` +
+                            (biblioteca.atualizadas ? `, ${biblioteca.atualizadas} atualizada(s)` : "") +
+                            (biblioteca.preservadas ? `, ${biblioteca.preservadas} editada(s) por você mantida(s)` : ""));
                     }
                     alert(`Importação concluída: ${partes.join(" · ")}.`);
                     await this.carregar();
@@ -124,21 +121,15 @@ export class ListaProjetos extends HTMLElement {
         const dialogo = this.querySelector(".dialogo-backup");
         const formulario = this.querySelector(".formulario-backup");
         const listaProjetos = this.querySelector(".backup-lista-projetos");
-        const campoBiblioteca = formulario.elements.biblioteca;
         const botaoBaixar = this.querySelector('[data-acao="baixar-backup"]');
 
         const checkboxesProjetos = () => [...listaProjetos.querySelectorAll('input[type="checkbox"]')];
         const atualizarBotao = () => {
-            botaoBaixar.disabled = !campoBiblioteca.checked && !checkboxesProjetos().some(c => c.checked);
+            botaoBaixar.disabled = !checkboxesProjetos().some(c => c.checked);
         };
 
         this.querySelector('[data-acao="abrir-backup"]').addEventListener("click", async () => {
-            const [projetos, especies] = await Promise.all([plantaTerraDB.listarProjetos(), plantaTerraDB.listarEspecies()]);
-
-            this.querySelector(".rotulo-biblioteca-backup").textContent =
-                `🌱 Biblioteca de plantas (${especies.length} espécie${especies.length === 1 ? "" : "s"})`;
-            campoBiblioteca.disabled = especies.length === 0;
-            campoBiblioteca.checked = especies.length > 0;
+            const projetos = await plantaTerraDB.listarProjetos();
 
             listaProjetos.innerHTML = projetos.length === 0
                 ? `<p class="ajuda-campo">Nenhum projeto ainda.</p>`
@@ -168,7 +159,7 @@ export class ListaProjetos extends HTMLElement {
             evento.preventDefault();
             const projetoIds = checkboxesProjetos().filter(c => c.checked).map(c => c.value);
             try {
-                await exportarBackup({ projetoIds, incluirBiblioteca: campoBiblioteca.checked });
+                await exportarBackup({ projetoIds });
                 dialogo.close();
             } catch (erro) {
                 alert(`Não foi possível gerar o backup: ${erro.message}`);
