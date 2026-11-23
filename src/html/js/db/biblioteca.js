@@ -192,10 +192,14 @@ export async function reconciliarPropriasComCatalogo() {
 
 // ---- projeto: o backup leva só as espécies que o projeto usa ----
 
-/** Instantâneos leves (só a foto de capa) das espécies de uma lista de ids. */
-export async function instantaneosDasEspecies(ids) {
+/**
+ * Instantâneos leves das espécies de uma lista de ids — as que o projeto usa — e, se pedido, de TODAS as fichas da biblioteca.
+ * Só a foto de capa, a menos que `todasAsFotos`.
+ */
+export async function instantaneosDasEspecies(ids, { incluirTodasAsFichas = false, todasAsFotos = false } = {}) {
     const registros = await obterRegistros(ids);
-    return [...registros.values()].map(instantaneoParaBackup);
+    if (incluirTodasAsFichas) for (const registro of await listarFichas()) registros.set(registro.id, registro);
+    return [...registros.values()].map(registro => instantaneoParaBackup(registro, { todasAsFotos }));
 }
 
 /**
@@ -203,13 +207,22 @@ export async function instantaneosDasEspecies(ids) {
  * importado); o que já existe fica como está, só ganhando a ficha se não tinha.
  */
 export async function incorporarInstantaneos(instantaneos) {
+    const resumo = { adicionadas: 0, atualizadas: 0, preservadas: 0 };
     const transacao = await abrir("readwrite");
     const store = transacao.objectStore("catalogo");
     for (const instantaneo of instantaneos) {
         if (!instantaneo?.id || typeof instantaneo.c !== "string") continue;
         const existente = await esperar(store.get(instantaneo.id));
-        if (!existente) await esperar(store.put(registroDeInstantaneo(instantaneo)));
-        else if (!existente.ficha && instantaneo.ficha) await esperar(store.put(aplicarFicha(existente, instantaneo.ficha, { substituir: true })));
+        if (!existente) {
+            await esperar(store.put(registroDeInstantaneo(instantaneo)));
+            resumo.adicionadas++;
+        } else if (!existente.ficha && instantaneo.ficha) {
+            await esperar(store.put(aplicarFicha(existente, instantaneo.ficha, { substituir: true })));
+            resumo.adicionadas++;
+        } else if (instantaneo.ficha) {
+            resumo.preservadas++; // já tinha ficha: fica a que está (nunca sobrescreve)
+        }
     }
     await new Promise(resolve => { transacao.oncomplete = resolve; });
+    return resumo;
 }

@@ -48,7 +48,7 @@ async function coletarProjeto(projetoId) {
     };
 }
 
-export async function montarBackup({ projetoIds }) {
+export async function montarBackup({ projetoIds, incluirBiblioteca = false, todasAsFotos = false }) {
     const projetos = [];
     for (const id of projetoIds) {
         projetos.push(await coletarProjeto(id));
@@ -62,15 +62,24 @@ export async function montarBackup({ projetoIds }) {
         formato_versao: FORMATO_VERSAO,
         exportado_em: Date.now(),
         projetos,
-        especies: await instantaneosDasEspecies(idsDeEspecies)
+        // `biblioteca_completa`: o backup leva TODAS as fichas da biblioteca (não só as dos projetos) — a importação avisa quantas entraram.
+        ...(incluirBiblioteca ? { biblioteca_completa: true } : {}),
+        especies: await instantaneosDasEspecies(idsDeEspecies, { incluirTodasAsFichas: incluirBiblioteca, todasAsFotos })
     };
 }
 
-export async function exportarBackup({ projetoIds }) {
-    const pacote = await montarBackup({ projetoIds });
+/** Tamanho aproximado (bytes) que a biblioteca inteira ocupa no backup, com só a capa ou com todas as fotos. */
+export async function estimarBibliotecaNoBackup({ todasAsFotos }) {
+    return JSON.stringify(await instantaneosDasEspecies([], { incluirTodasAsFichas: true, todasAsFotos })).length;
+}
+
+export async function exportarBackup({ projetoIds, incluirBiblioteca = false, todasAsFotos = false }) {
+    const pacote = await montarBackup({ projetoIds, incluirBiblioteca, todasAsFotos });
     const data = new Date().toISOString().slice(0, 10);
-    const soUmProjeto = pacote.projetos.length === 1;
-    const nomeArquivo = soUmProjeto
+    const soUmProjeto = pacote.projetos.length === 1 && !incluirBiblioteca;
+    const nomeArquivo = pacote.projetos.length === 0
+        ? `plantaterra-biblioteca-backup-${data}.json`
+        : soUmProjeto
         ? `plantaterra-${slug(pacote.projetos[0].projeto.nome)}-${data}.json`
         : `plantaterra-backup-${data}.json`;
     baixarArquivo(JSON.stringify(pacote, null, 2), nomeArquivo, "application/json");
@@ -132,9 +141,11 @@ export async function importarArquivo(arquivoOuTexto) {
     }
 
     // Biblioteca primeiro: as espécies que os projetos usam precisam existir antes de as plantas apontarem para elas.
-    if (instantaneos) await incorporarInstantaneos(instantaneos);
+    const resumoInstantaneos = instantaneos ? await incorporarInstantaneos(instantaneos) : null;
     const resumoLegado = especiesLegadas ? await mesclarFichas(especiesLegadas) : null;
     const idPorChave = resumoLegado?.idPorChave ?? new Map();
+    // O resumo da biblioteca só aparece quando o backup levava a biblioteca toda (ou é um backup antigo, que sempre levava).
+    const resumoBiblioteca = resumoLegado ?? (pacote.biblioteca_completa ? resumoInstantaneos : null);
 
     const nomesEmUso = new Set((await plantaTerraDB.listarProjetos()).map(p => p.nome));
 
@@ -143,7 +154,7 @@ export async function importarArquivo(arquivoOuTexto) {
         projetosImportados.push(await importarEntradaDeProjeto(entrada, idPorChave, nomesEmUso));
     }
 
-    return { projetos: projetosImportados, biblioteca: resumoLegado };
+    return { projetos: projetosImportados, biblioteca: resumoBiblioteca };
 }
 
 async function importarEntradaDeProjeto(entrada, idPorChave, nomesEmUso) {

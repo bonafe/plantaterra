@@ -1,5 +1,6 @@
 import { plantaTerraDB } from "../db/plantaterra_db.js";
-import { exportarBackup, importarArquivo } from "../db/exportador_projeto.js";
+import { estimarBibliotecaNoBackup, exportarBackup, importarArquivo } from "../db/exportador_projeto.js";
+import { contarFichas } from "../db/biblioteca.js";
 import { escaparHtml, formatarData } from "./util_dom.js";
 
 /**
@@ -34,6 +35,17 @@ export class ListaProjetos extends HTMLElement {
                     <form method="dialog" class="formulario-backup">
                         <h2>Backup</h2>
                         <p class="ajuda-campo">Escolha o que vai para o arquivo. Ele guarda tudo: perímetros, estações e leituras, SAF, linhas e plantas — e a ficha das espécies que cada projeto usa (com a foto de capa), para o projeto abrir completo em outro aparelho.</p>
+                        <label class="campo-checkbox">
+                            <input type="checkbox" name="biblioteca" />
+                            <span class="rotulo-biblioteca-backup"></span>
+                        </label>
+                        <label class="opcao-fotos-backup" hidden>Fotos das fichas
+                            <select name="fotos_biblioteca">
+                                <option value="capa">Só a foto de capa (arquivo bem menor)</option>
+                                <option value="todas">Todas as fotos</option>
+                            </select>
+                        </label>
+                        <p class="ajuda-campo estimativa-biblioteca-backup" hidden></p>
                         <div class="backup-cabecalho-projetos">
                             <strong>Projetos</strong>
                             <button type="button" class="botao-icone-inline" data-acao="alternar-todos-backup">Marcar/desmarcar todos</button>
@@ -123,13 +135,28 @@ export class ListaProjetos extends HTMLElement {
         const listaProjetos = this.querySelector(".backup-lista-projetos");
         const botaoBaixar = this.querySelector('[data-acao="baixar-backup"]');
 
+        const campoBiblioteca = formulario.elements.biblioteca;
+        const campoFotos = formulario.elements.fotos_biblioteca;
+        const atualizarEstimativa = async () => {
+            const aviso = this.querySelector(".estimativa-biblioteca-backup");
+            this.querySelector(".opcao-fotos-backup").hidden = !campoBiblioteca.checked;
+            aviso.hidden = !campoBiblioteca.checked;
+            if (!campoBiblioteca.checked) return;
+            aviso.textContent = "Calculando o tamanho…";
+            const bytes = await estimarBibliotecaNoBackup({ todasAsFotos: campoFotos.value === "todas" });
+            aviso.textContent = `A biblioteca acrescenta cerca de ${(bytes / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB ao arquivo.`;
+        };
         const checkboxesProjetos = () => [...listaProjetos.querySelectorAll('input[type="checkbox"]')];
         const atualizarBotao = () => {
-            botaoBaixar.disabled = !checkboxesProjetos().some(c => c.checked);
+            botaoBaixar.disabled = !campoBiblioteca.checked && !checkboxesProjetos().some(c => c.checked);
         };
 
         this.querySelector('[data-acao="abrir-backup"]').addEventListener("click", async () => {
-            const projetos = await plantaTerraDB.listarProjetos();
+            const [projetos, fichas] = await Promise.all([plantaTerraDB.listarProjetos(), contarFichas()]);
+            this.querySelector(".rotulo-biblioteca-backup").textContent = `🌱 Incluir todas as fichas da biblioteca (${fichas})`;
+            campoBiblioteca.disabled = fichas === 0;
+            campoBiblioteca.checked = false;
+            atualizarEstimativa();
 
             listaProjetos.innerHTML = projetos.length === 0
                 ? `<p class="ajuda-campo">Nenhum projeto ainda.</p>`
@@ -151,7 +178,10 @@ export class ListaProjetos extends HTMLElement {
             atualizarBotao();
         });
 
-        formulario.addEventListener("change", atualizarBotao);
+        formulario.addEventListener("change", evento => {
+            atualizarBotao();
+            if (evento.target === campoBiblioteca || evento.target === campoFotos) atualizarEstimativa();
+        });
         this.querySelector('[data-acao="cancelar-backup"]').addEventListener("click", () => dialogo.close());
 
         formulario.addEventListener("submit", async evento => {
@@ -159,7 +189,7 @@ export class ListaProjetos extends HTMLElement {
             evento.preventDefault();
             const projetoIds = checkboxesProjetos().filter(c => c.checked).map(c => c.value);
             try {
-                await exportarBackup({ projetoIds });
+                await exportarBackup({ projetoIds, incluirBiblioteca: campoBiblioteca.checked, todasAsFotos: campoFotos.value === "todas" });
                 dialogo.close();
             } catch (erro) {
                 alert(`Não foi possível gerar o backup: ${erro.message}`);

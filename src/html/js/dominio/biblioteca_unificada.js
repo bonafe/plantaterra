@@ -128,13 +128,13 @@ export function especieDoRegistro(registro) {
     return saida;
 }
 
-/** Instantâneo leve para o backup do projeto: sem relações/referências do catálogo, e só a foto de capa. */
-export function instantaneoParaBackup(registro) {
+/** Instantâneo leve para o backup: sem relações/referências do catálogo e, por padrão, só a foto de capa. */
+export function instantaneoParaBackup(registro, { todasAsFotos = false } = {}) {
     const { cn, nv, busca, rel, rf, tp, p_original, ficha, ...compacto } = registro;
     const saida = { ...compacto };
     if (ficha) {
         const { fotos, ...resto } = ficha;
-        saida.ficha = { ...resto, ...(fotos?.length ? { fotos: [fotos[0]] } : {}) };
+        saida.ficha = { ...resto, ...(fotos?.length ? { fotos: todasAsFotos ? fotos : [fotos[0]] } : {}) };
         saida.p_original = p_original;
     }
     return saida;

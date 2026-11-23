@@ -2336,3 +2336,21 @@ ficha-taxon[hidden] {
         color: #fc8181;
     }
 }
+
+
+.opcao-fotos-backup {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 4px 0 8px 28px;
+    font-size: 0.9rem;
+}
+
+.opcao-fotos-backup[hidden] {
+    display: none;
+}
+
+.opcao-fotos-backup select {
+    min-height: 44px;
+    font: inherit;
+}
