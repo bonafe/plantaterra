@@ -1,6 +1,6 @@
 import { exportarFichas, importarBiblioteca } from "../db/exportador_biblioteca.js";
-import { criarEspecieProria, listarFichas, obterRegistro, removerFicha, salvarFicha } from "../db/biblioteca.js";
-import { buscarCatalogo, cabecalhoDoCatalogo, contarCatalogo, contextoDoTaxon, ehArquivoDeCatalogoNacional, exportarCatalogoNacional, importarCatalogoNacional, listarCatalogo }
+import { criarEspecieProria, listarFichas, obterRegistro, removerFicha, removerTodasAsFichas, salvarFicha } from "../db/biblioteca.js";
+import { buscarCatalogo, cabecalhoDoCatalogo, contarCatalogo, contextoDoTaxon, ehArquivoDeCatalogoNacional, exportarCatalogoNacional, importarCatalogoNacional, limparCatalogo, listarCatalogo }
     from "../db/catalogo_nacional.js";
 import { CICLOS_ESPECIE, chaveEspecie, normalizarNome } from "../dominio/biblioteca_plantas.js";
 import { especieDoRegistro, fichaDeBruta } from "../dominio/biblioteca_unificada.js";
@@ -41,6 +41,7 @@ export class TelaBiblioteca extends HTMLElement {
                     <div class="acoes-lista-projetos">
                         <button type="button" class="botao-primario" data-acao="nova-especie">+ Nova espécie</button>
                         <button type="button" class="botao-secundario" data-acao="exportar">Exportar</button>
+                        <button type="button" class="botao-secundario" data-acao="abrir-limpar">Limpar</button>
                         <label class="botao-secundario botao-arquivo">
                             Importar
                             <input type="file" accept="application/json,.json,.jsonl,.gz,application/gzip" data-acao="importar" hidden />
@@ -76,6 +77,17 @@ export class TelaBiblioteca extends HTMLElement {
                         <button type="button" class="botao-primario" data-acao="exportar-fichas">Fichas completas<small>com todas as fotos — para mandar a outra pessoa</small></button>
                         <button type="button" data-acao="exportar-catalogo">Catálogo nacional<small>táxons, sem as fichas</small></button>
                         <button type="button" data-acao="cancelar-exportar">Cancelar</button>
+                    </div>
+                </dialog>
+
+                <dialog class="dialogo-limpar">
+                    <h2>Limpar a biblioteca</h2>
+                    <p class="ajuda-campo texto-limpar"></p>
+                    <p class="ajuda-campo">Seus <strong>projetos não são tocados</strong>: as plantas já cadastradas continuam, com o nome em texto.</p>
+                    <div class="acoes-formulario acoes-exportar">
+                        <button type="button" data-acao="limpar-fichas">Limpar só as fichas<small class="detalhe-limpar-fichas"></small></button>
+                        <button type="button" class="botao-perigo" data-acao="limpar-tudo">Limpar tudo<small class="detalhe-limpar-tudo"></small></button>
+                        <button type="button" data-acao="cancelar-limpar">Cancelar</button>
                     </div>
                 </dialog>
 
@@ -136,6 +148,7 @@ export class TelaBiblioteca extends HTMLElement {
         this.campoBusca = this.querySelector(".busca-biblioteca");
         this.dialogo = this.querySelector(".dialogo-especie");
         this.dialogoExportar = this.querySelector(".dialogo-exportar");
+        this.dialogoLimpar = this.querySelector(".dialogo-limpar");
         this.formulario = this.querySelector(".formulario-especie");
         this.elementoErro = this.querySelector(".erro-formulario");
         this.vistaLista = this.querySelector(".painel-biblioteca");
@@ -202,6 +215,26 @@ export class TelaBiblioteca extends HTMLElement {
             this.dialogoExportar.close();
             if (await exportarCatalogoNacional() === 0) alert("O catálogo nacional não foi importado — não há nada para exportar.");
         });
+        // ---- limpar ----
+        this.querySelector('[data-acao="abrir-limpar"]').addEventListener("click", () => this._abrirLimpar());
+        this.querySelector('[data-acao="cancelar-limpar"]').addEventListener("click", () => this.dialogoLimpar.close());
+        this.querySelector('[data-acao="limpar-fichas"]').addEventListener("click", async () => {
+            const n = this._fichas.length;
+            if (!confirm(`Remover as ${formatarNumero(n)} ficha(s) completa(s)? Os táxons do catálogo continuam; espécies que você criou serão excluídas. Isso não pode ser desfeito.`)) return;
+            this.dialogoLimpar.close();
+            const removidas = await this._comProgresso("Removendo as fichas…", () => removerTodasAsFichas());
+            await this._carregar();
+            alert(`${formatarNumero(removidas)} ficha(s) removida(s).`);
+        });
+        this.querySelector('[data-acao="limpar-tudo"]').addEventListener("click", async () => {
+            if (!confirm(`Apagar a biblioteca inteira — ${formatarNumero(this._fichas.length)} ficha(s) e ${formatarNumero(this._total)} registro(s) do catálogo? Para tê-la de volta será preciso importar os arquivos de novo. Isso não pode ser desfeito.`)) return;
+            this.dialogoLimpar.close();
+            // Apagar 166 mil registros leva alguns segundos: a tela avisa em vez de parecer travada.
+            await this._comProgresso("Apagando a biblioteca…", () => limparCatalogo());
+            await this._carregar();
+            alert("Biblioteca apagada.");
+        });
+
         this.querySelector('[data-acao="importar"]').addEventListener("change", async evento => {
             const arquivo = evento.target.files[0];
             if (!arquivo) return;
@@ -356,6 +389,32 @@ export class TelaBiblioteca extends HTMLElement {
         if (preservadas) partes.push(`${preservadas} editada(s) por você mantida(s) (só receberam o que faltava)`);
         if (invalidas) partes.push(`${invalidas} ignorada(s) por falta de nome`);
         alert(`Importação concluída: ${partes.join(", ")}.`);
+    }
+
+    async _comProgresso(texto, operacao) {
+        this.progressoElemento.hidden = false;
+        this.progressoElemento.querySelector("span").textContent = texto;
+        try {
+            return await operacao();
+        } finally {
+            this.progressoElemento.hidden = true;
+        }
+    }
+
+    _abrirLimpar() {
+        const fichas = this._fichas.length;
+        const proprias = this._fichas.filter(f => f.registro.propria).length;
+        const noCatalogo = this._total - proprias;
+        this.querySelector(".texto-limpar").textContent = fichas === 0 && this._total === 0
+            ? "A biblioteca já está vazia."
+            : `Hoje há ${formatarNumero(fichas)} ficha(s) completa(s) e ${formatarNumero(noCatalogo)} táxon(s) do catálogo nacional.`;
+        this.querySelector(".detalhe-limpar-fichas").textContent = fichas
+            ? `tira os dados completos de ${formatarNumero(fichas)} espécie(s); o catálogo de nomes fica` : "não há fichas";
+        this.querySelector(".detalhe-limpar-tudo").textContent = this._total + fichas
+            ? "fichas e catálogo — para voltar, importe os arquivos de novo" : "nada para apagar";
+        this.querySelector('[data-acao="limpar-fichas"]').disabled = fichas === 0;
+        this.querySelector('[data-acao="limpar-tudo"]').disabled = this._total === 0 && fichas === 0;
+        this.dialogoLimpar.showModal();
     }
 
     // ---- lista: espécies com ficha completa primeiro, depois o catálogo (paginado por cursor) ----

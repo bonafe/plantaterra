@@ -2218,3 +2218,15 @@ ficha-taxon[hidden] {
         background: #2d3748;
     }
 }
+
+.botao-perigo {
+    border-color: #c53030;
+    color: #c53030;
+}
+
+@media (prefers-color-scheme: dark) {
+    .botao-perigo {
+        border-color: #fc8181;
+        color: #fc8181;
+    }
+}

@@ -133,6 +133,23 @@ export async function removerFicha(id) {
     else await esperar(store.put(semFicha(registro)));
 }
 
+/**
+ * Limpa as fichas de uma vez: cada táxon do catálogo perde a dele (e continua lá); espécie própria some.
+ * As plantas dos projetos não são tocadas (guardam o nome em texto).
+ * @returns {Promise<number>} quantas fichas foram removidas
+ */
+export async function removerTodasAsFichas() {
+    const transacao = await abrir("readwrite");
+    const store = transacao.objectStore("catalogo");
+    const registros = await esperar(store.index("index_rica").getAll());
+    for (const registro of registros) {
+        if (registro.propria) await esperar(store.delete(registro.id));
+        else await esperar(store.put(semFicha(registro)));
+    }
+    await new Promise(resolve => { transacao.oncomplete = resolve; });
+    return registros.length;
+}
+
 /** Plantas dos projetos que apontavam para `idAntigo` passam a apontar para o novo (quando duas fichas se fundem). */
 export async function religarPlantas(mapaDeIds) {
     if (!mapaDeIds.size) return;
