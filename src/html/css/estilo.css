@@ -1628,7 +1628,8 @@ campo-limpavel input[type="search"]::-webkit-search-cancel-button {
 /* Trecho encontrado na busca (biblioteca e autocomplete de espécie) */
 .destaque-busca {
     background: #fefcbf;
-    color: inherit;
+    /* Cor própria: no modo escuro o texto é claro e, herdada, sumiria sobre o fundo amarelo. */
+    color: #1a202c;
     border-radius: 2px;
     box-shadow: 0 0 0 1px #fefcbf;
 }
@@ -2167,4 +2168,53 @@ ficha-taxon[hidden] {
 
 .linha-campos label {
     flex: 1;
+}
+
+/* Modo escuro das peças da biblioteca: fundos claros e cores primárias escuras viram versões legíveis */
+@media (prefers-color-scheme: dark) {
+    .botao-secundario {
+        color: #9ae6b4;
+        border-color: #48bb78;
+    }
+
+    .botao-link,
+    .taxon-link {
+        color: #9ae6b4;
+    }
+
+    .chip-ativo,
+    .selo-taxon {
+        background: #2f4f3a;
+        color: #edf2f7;
+        border-color: #68d391;
+    }
+
+    .chip-filtro span,
+    .chip-botao {
+        background: #1a202c;
+        color: #edf2f7;
+        border-color: #4a5568;
+    }
+
+    .chip-filtro input:checked + span {
+        background: #38a169;
+        border-color: #38a169;
+        color: #fff;
+    }
+
+    .aviso-sinonimo,
+    .filtro-aviso {
+        background: #3b2f1a;
+        color: #edf2f7;
+    }
+
+    .ficha-icones .botao-icone {
+        background: #2d3748;
+        color: #edf2f7;
+        border-color: #4a5568;
+    }
+
+    .detalhe-fotos img {
+        background: #2d3748;
+    }
 }
