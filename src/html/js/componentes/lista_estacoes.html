@@ -2,6 +2,9 @@
     <strong>Estação</strong> é onde o laser está montado. <strong>Leitura</strong> é cada ponto onde você põe a régua.
     As curvas de nível usam as leituras (no mínimo 3). A primeira leitura vale zero; toque em outra para fazer dela o zero.
 </p>
+<p class="ajuda-campo" data-bind='{"hidden":"unica"}'>
+    Toque no nome de uma estação para o mapa e as curvas usarem só os pontos dela; toque de novo para ver todas.
+</p>
 <template data-if="temSuspeitas">
     <div class="aviso-alturas">
         <p>{{ textoSuspeitas }}</p>
@@ -13,12 +16,13 @@
         <li class="lista-vazia">Nenhuma estação ainda.</li>
     </template>
     <template data-for="e in itens : id">
-        <li class="item-estacao">
+        <li class="item-estacao" data-class='{"ativa":"e.ativa"}'>
             <div class="estacao-cabecalho">
-                <div class="estacao-dados">
+                <button type="button" class="estacao-dados" data-acao="ver-so-estacao" data-bind='{"disabled":"unica","aria-pressed":"e.pressionada"}' data-on='{"click":"alternarEstacao"}'>
                     <strong>{{ e.nome }}</strong>
                     <span>{{ e.ligacao }}</span>
-                </div>
+                    <span class="estacao-no-mapa" data-bind='{"hidden":"e.inativa"}'>📍 só ela no mapa</span>
+                </button>
                 <button type="button" class="botao-editar" data-acao="editar-estacao" data-on='{"click":"editarEstacao"}'>✏️ Editar</button>
             </div>
             <details>

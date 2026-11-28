@@ -693,6 +693,35 @@ andar-gps[hidden] {
     overflow-wrap: anywhere;
 }
 
+button.estacao-dados {
+    flex: 1;
+    min-height: 44px;
+    padding: 4px 0;
+    border: none;
+    background: transparent;
+    color: var(--cor-texto);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+button.estacao-dados:disabled {
+    cursor: default;
+}
+
+.item-estacao.ativa {
+    border: 2px solid var(--cor-primaria);
+}
+
+.estacao-dados .estacao-no-mapa {
+    color: var(--cor-texto);
+    font-weight: 600;
+}
+
+.estacao-dados .estacao-no-mapa[hidden] {
+    display: none;
+}
+
 .estacao-dados span {
     color: var(--cor-texto-suave);
     font-size: 0.85rem;

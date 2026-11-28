@@ -288,25 +288,31 @@ export class MapaProjeto extends HTMLElement {
 
     /**
      * Estações (círculo branco) e leituras coloridas pela altitude (mapa de calor). Tocar numa leitura
-     * emite "leitura-clicada" { leituraId }.
+     * emite "leitura-clicada" { leituraId }; numa estação, "estacao-clicada" { estacaoId }.
+     * Com `somenteEstacaoId`, desenha só aquela estação — as cores e o zero continuam calculados com todas.
      */
-    definirEstacoesELeituras(estacoesComLeituras) {
+    definirEstacoesELeituras(estacoesComLeituras, { somenteEstacaoId = null } = {}) {
         this.camadaLeituras.clear();
         this._leituras = new Map();
         const faixas = faixasDeAltitudePorEstacao(estacoesComLeituras);
         const zeros = idsDasLeiturasZero(estacoesComLeituras);
+        const desenhadas = estacoesComLeituras.filter(({ estacao }) => !somenteEstacaoId || estacao.id === somenteEstacaoId);
+        const faixasDesenhadas = desenhadas.map(({ estacao }) => faixas.get(estacao.id));
         this._faixaGeral = {
-            minimo: Math.min(...[...faixas.values()].map(f => f.minimo)),
-            maximo: Math.max(...[...faixas.values()].map(f => f.maximo))
+            minimo: Math.min(...faixasDesenhadas.map(f => f.minimo)),
+            maximo: Math.max(...faixasDesenhadas.map(f => f.maximo))
         };
 
-        estacoesComLeituras.forEach(({ estacao, leituras }) => {
+        desenhadas.forEach(({ estacao, leituras }) => {
             // A posição do laser é opcional: não entra na conta.
             if (estacao.coordenada) {
                 this._adicionar(this.camadaLeituras,
                     new ol.geom.Point(paraMapa(estacao.coordenada.lat, estacao.coordenada.lon)),
                     estiloCirculo({ raio: 9, cor: "#1a202c", largura: 3, corPreenchimento: "#ffffff" }),
-                    { rotulo: `${estacao.nome} (instrumento)` });
+                    {
+                        rotulo: `${estacao.nome} (instrumento)`,
+                        aoClicar: () => this.dispatchEvent(new CustomEvent("estacao-clicada", { detail: { estacaoId: estacao.id } }))
+                    });
             }
 
             leituras.forEach(leitura => {
@@ -629,11 +635,11 @@ export class MapaProjeto extends HTMLElement {
     }
 
     /** Enquadra uma extensão (coordenadas do mapa) com folga em px; mantém a rotação atual. */
-    _enquadrar(extensao, folgaPx) {
+    _enquadrar(extensao, folgaPx, zoomMaximo = 20) {
         if (ol.extent.isEmpty(extensao)) return;
         this.visao.fit(extensao, {
             padding: [folgaPx, folgaPx, folgaPx, folgaPx],
-            maxZoom: 20,
+            maxZoom: zoomMaximo,
             duration: 0
         });
     }
@@ -676,6 +682,14 @@ export class MapaProjeto extends HTMLElement {
             //Enquadrou a propriedade inteira: a posição do GPS, que chega depois, não pode sobrescrever
             this._centralizadoAutomaticamente = true;
         }
+    }
+
+    /** Enquadra só as estações e leituras, o mais perto que couber todas. Devolve false se não há nenhuma. */
+    ajustarZoomParaLeituras() {
+        if (this.camadaLeituras.getFeatures().length === 0) return false;
+        this._enquadrar(this.camadaLeituras.getExtent(), 40, 21);
+        this._centralizadoAutomaticamente = true;
+        return true;
     }
 
     invalidarTamanho() {

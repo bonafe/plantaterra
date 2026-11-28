@@ -15,7 +15,9 @@ import { contarAlturasSuspeitas, faixasDeAltitudePorEstacao, idsDasLeiturasZero 
  *
  * Entrada:  estacoes = [{ estacao, leituras }]
  *           selecionar(leituraId | null)  marca a leitura, abre o bloco dela e rola até ela
- * Eventos:  "leitura-destacada"           detail { leituraId | null }
+ *           marcarEstacao(estacaoId | null)  a estação cujos pontos o mapa está mostrando sozinhos
+ * Eventos:  "leitura-destacada"           detail { leituraId | null, clicada, estacaoId }
+ *           "estacao-alternada"           detail { estacaoId | null }  (só com 2 ou mais estações)
  *           "zero-solicitado"             detail { leituraId }
  *           "nova-leitura-solicitada"     detail { estacaoId }
  *           "editar-estacao-solicitada"   detail { estacaoId }
@@ -29,7 +31,7 @@ export class ListaEstacoes extends ReactiveComponent {
     }
 
     connectedCallback() {
-        if (!this.state) this.state = { itens: [], vazia: true, temSuspeitas: false };
+        if (!this.state) this.state = { itens: [], vazia: true, unica: true, temSuspeitas: false };
     }
 
     set estacoes(lista) {
@@ -40,12 +42,14 @@ export class ListaEstacoes extends ReactiveComponent {
         // O template só interpola caminhos ({{ a.b }}), sem formatação: o texto já vem pronto.
         this.state = {
             vazia: lista.length === 0,
+            unica: lista.length < 2,
             gradiente: GRADIENTE_CALOR,
             temSuspeitas: this._suspeitas > 0,
             textoSuspeitas: `⚠️ ${this._suspeitas} leitura(s) acima de 10 m: parece que foram digitadas em cm quando o campo era em metros.`,
             itens: lista.map(({ estacao, leituras }) => ({
                 id: estacao.id,
                 nome: estacao.nome,
+                ...this._marcaDaEstacao(estacao.id),
                 ligacao: this._descreverLigacao(estacao, leituras, lista, nomePorId),
                 resumoLeituras: leituras.length === 0 ? "Nenhuma leitura ainda"
                     : leituras.length === 1 ? "1 leitura" : `${leituras.length} leituras`,
@@ -78,6 +82,21 @@ export class ListaEstacoes extends ReactiveComponent {
             : `⚠️ falta a leitura de amarração com ${nome}`;
     }
 
+    _marcaDaEstacao(id) {
+        const ativa = id === this._estacaoMarcada;
+        return { ativa, inativa: !ativa, pressionada: String(ativa) };
+    }
+
+    marcarEstacao(estacaoId) {
+        this._estacaoMarcada = estacaoId;
+        if (!this.state?.itens) return;
+        this.state = { ...this.state, itens: this.state.itens.map(item => ({ ...item, ...this._marcaDaEstacao(item.id) })) };
+    }
+
+    alternarEstacao(evento, escopo) {
+        this._emitir("estacao-alternada", { estacaoId: escopo.e.id === this._estacaoMarcada ? null : escopo.e.id });
+    }
+
     selecionar(leituraId) {
         this._selecionada = leituraId;
         if (!this.state?.itens) return;
@@ -99,7 +118,7 @@ export class ListaEstacoes extends ReactiveComponent {
         if (evento.target.closest(".botao-editar, .botao-zero")) return;
         const id = escopo.l.id === this._selecionada ? null : escopo.l.id;
         this.selecionar(id);
-        this._emitir("leitura-destacada", { leituraId: id });
+        this._emitir("leitura-destacada", { leituraId: id, clicada: true, estacaoId: escopo.e.id });
     }
 
     definirZero(evento, escopo) {

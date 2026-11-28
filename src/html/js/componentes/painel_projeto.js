@@ -235,9 +235,12 @@ export class PainelProjeto extends HTMLElement {
         this.mapaElemento.definirPerimetros(trilhasVisiveis);
         this.mapaElemento.definirEstacoesELeituras(this.estacoesComLeituras);
         this.mapaElemento.definirLinhasSaf(safsComLinhas);
+        // Mede a propriedade com tudo desenhado (lê o mapa já), antes de filtrar pela estação escolhida.
+        const extensaoGravada = this._atualizarExtensaoPropriedade();
+        if (this._estacaoNoMapa) this._desenharNiveisNoMapa();
         // Na vista SAF o mapa acompanha a fileira/a pessoa: não reenquadra tudo a cada recarga.
-        if (this._vista !== "saf") this.mapaElemento.ajustarZoomParaConteudo();
-        await this._atualizarExtensaoPropriedade();
+        if (this._vista !== "saf") this._enquadrarVista();
+        await extensaoGravada;
 
         const areaElemento = this.querySelector(".area-perimetro");
         areaElemento.textContent = trilhaAtiva?.poligono?.length >= 3
@@ -247,6 +250,37 @@ export class PainelProjeto extends HTMLElement {
         this._renderizarListaEstacoes();
         this._atualizarResumos();
         if (this._vista === "saf") await this._recarregarVistaSaf();
+    }
+
+    /** As estações cujos pontos valem no mapa e nas curvas: todas, ou só a escolhida. */
+    _estacoesNoMapa() {
+        return this.estacoesComLeituras.filter(({ estacao }) => !this._estacaoNoMapa || estacao.id === this._estacaoNoMapa);
+    }
+
+    _desenharNiveisNoMapa() {
+        this.mapaElemento.definirEstacoesELeituras(this.estacoesComLeituras, { somenteEstacaoId: this._estacaoNoMapa });
+    }
+
+    /** Escolhe a estação mostrada sozinha no mapa (null = todas). */
+    _mostrarSoEstacao(estacaoId) {
+        if (estacaoId === (this._estacaoNoMapa ?? null)) return;
+        this._estacaoNoMapa = estacaoId;
+        const lista = this.querySelector("lista-estacoes");
+        lista.marcarEstacao(estacaoId);
+        const nome = estacaoId && this._itemDaEstacao(estacaoId).estacao.nome;
+        this.querySelector('[data-acao="gerar-curvas"]').textContent =
+            nome ? `Gerar curvas de nível — só ${nome}` : "Gerar curvas de nível";
+        // Curvas já desenhadas eram de outro conjunto de pontos.
+        this.mapaElemento.definirIsolinhas([]);
+        this._desenharNiveisNoMapa();
+    }
+
+    /** Nas estações de nível o mapa fecha nos pontos medidos; nas demais telas, na propriedade. */
+    _enquadrarVista() {
+        // O mapa pode ter acabado de mudar de tamanho por CSS (ex: saindo da agrofloresta).
+        this.mapaElemento.invalidarTamanho();
+        if (this._vista === "estacoes" && this.mapaElemento.ajustarZoomParaLeituras()) return;
+        this.mapaElemento.ajustarZoomParaConteudo();
     }
 
     /**
@@ -649,7 +683,28 @@ export class PainelProjeto extends HTMLElement {
         });
 
         lista.addEventListener("leitura-destacada", evento => {
-            this.mapaElemento.destacarLeitura(evento.detail.leituraId);
+            const { leituraId, clicada, estacaoId } = evento.detail;
+            // Clicar numa leitura de outra estação passa o mapa para ela.
+            if (clicada && leituraId && this._estacaoNoMapa && estacaoId !== this._estacaoNoMapa) {
+                this._mostrarSoEstacao(estacaoId);
+                this._enquadrarVista();
+            }
+            this.mapaElemento.destacarLeitura(leituraId);
+        });
+
+        lista.addEventListener("estacao-alternada", evento => {
+            lista.selecionar(null);
+            this.mapaElemento.destacarLeitura(null);
+            this._mostrarSoEstacao(evento.detail.estacaoId);
+            this._enquadrarVista();
+        });
+
+        this.mapaElemento.addEventListener("estacao-clicada", async evento => {
+            const { estacaoId } = evento.detail;
+            if (this.querySelector(".painel-inferior").hidden || this.estacoesComLeituras.length < 2) return;
+            if (this._vista !== "estacoes") await this._irParaVista("estacoes");
+            this._mostrarSoEstacao(estacaoId === this._estacaoNoMapa ? null : estacaoId);
+            this._enquadrarVista();
         });
 
         this.mapaElemento.addEventListener("leitura-clicada", async evento => {
@@ -666,6 +721,8 @@ export class PainelProjeto extends HTMLElement {
         });
 
         lista.addEventListener("nova-leitura-solicitada", evento => {
+            // O ponto novo precisa aparecer: se o mapa mostrava outra estação, passa para esta.
+            if (this._estacaoNoMapa) this._mostrarSoEstacao(evento.detail.estacaoId);
             this._estacaoIdParaLeitura = evento.detail.estacaoId;
             dialogoLeitura.abrir();
         });
@@ -743,11 +800,14 @@ export class PainelProjeto extends HTMLElement {
 
     _wireCurvasDeNivel() {
         this.querySelector('[data-acao="gerar-curvas"]').addEventListener("click", () => {
-            const pontos = consolidarPontosDoProjeto(this.estacoesComLeituras);
+            const estacoes = this._estacoesNoMapa();
+            const pontos = consolidarPontosDoProjeto(estacoes);
 
             if (pontos.length < 3) {
                 alert("São necessárias ao menos 3 leituras para gerar curvas de nível. " +
-                    `Este projeto tem ${this.estacoesComLeituras.length} estação(ões) e ${pontos.length} leitura(s).\n\n` +
+                    (this._estacaoNoMapa
+                        ? `A estação escolhida tem ${pontos.length} leitura(s).\n\n`
+                        : `Este projeto tem ${estacoes.length} estação(ões) e ${pontos.length} leitura(s).\n\n`) +
                     "A estação é só o lugar do laser. Para cada ponto medido com a régua, toque em \"+ Leitura nesta estação\".");
                 return;
             }
@@ -755,7 +815,8 @@ export class PainelProjeto extends HTMLElement {
             const { isolinhas } = gerarCurvasDeNivel(pontos, this.trilhaAtiva?.poligono ?? null);
             this.mapaElemento.definirIsolinhas(isolinhas);
 
-            const destoantes = leiturasDestoantes(this.estacoesComLeituras);
+            const mostradas = new Set(estacoes.flatMap(item => item.leituras.map(l => l.id)));
+            const destoantes = leiturasDestoantes(this.estacoesComLeituras).filter(l => mostradas.has(l.id));
             if (destoantes.length > 0) {
                 const nomes = destoantes.map(l => `${l.nome ? `${l.nome}: ` : ""}mira ${formatarCentimetros(l.altura_mira)}`);
                 alert(`Atenção: ${destoantes.length} leitura(s) muito diferente(s) das outras distorce(m) as curvas:\n` +
@@ -806,6 +867,7 @@ export class PainelProjeto extends HTMLElement {
             if (vista !== "estacoes") {
                 this.querySelector("lista-estacoes").selecionar(null);
                 this.mapaElemento.destacarLeitura(null);
+                this._mostrarSoEstacao(null);
             }
 
             entrada.hidden = vista !== "entrada";
@@ -819,10 +881,12 @@ export class PainelProjeto extends HTMLElement {
             botaoAmpliar.hidden = vista !== "saf";
             this._definirMapaAmpliado(false);
 
+            // As migalhas mudam a altura do cabeçalho (e a do mapa): vêm antes do enquadramento.
+            this._renderizarMigalhas();
             if (vista === "saf") {
                 await this._abrirVistaSaf();
             } else {
-                this.mapaElemento.ajustarZoomParaConteudo();
+                this._enquadrarVista();
             }
             this._lembrarLugar();
             this._renderizarMigalhas();
