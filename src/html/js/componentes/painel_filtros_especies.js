@@ -109,7 +109,7 @@ export class PainelFiltrosEspecies extends HTMLElement {
                 ${secao("familias", "Família", `<label class="filtro-opcao">Família <select name="familiaUnica"><option value="">Qualquer</option>${familias.map(([nome, qtd]) =>
                         `<option value="${escaparHtml(nome)}">${escaparHtml(nome)} (${qtd})</option>`).join("")}</select></label>`)}
                 ${secao("extras", "Foto e referências", `
-                    <label class="filtro-opcao">Foto <select name="comFoto"><option value="">Todas</option><option value="sim">Só com foto (${facetas.comFoto})</option><option value="nao">Só sem foto</option></select></label>
+                    <label class="filtro-opcao">Foto <select name="comFoto"><option value="">Todas</option><option value="sim">${facetas.comFoto ? `Só com foto (${facetas.comFoto})` : "Só com foto (0 — nenhuma ficha tem foto; importe o arquivo com fotos)"}</option><option value="nao">Só sem foto</option></select></label>
                     <label class="filtro-opcao"><input type="checkbox" name="comReferencias" /> Só com referências bibliográficas (${facetas.comReferencias})</label>
                     <label class="filtro-opcao"><input type="checkbox" name="comAltura" /> Só com altura informada</label>`)}
             </div>

@@ -1,6 +1,7 @@
 import { DBBase } from "./db_base.js";
 import { aplicarFicha, fichaDeBruta, registroProprio } from "../dominio/biblioteca_unificada.js";
 import { normalizarNome } from "../dominio/biblioteca_plantas.js";
+import { nomePadraoDaEstacao } from "../dominio/nivelamento.js";
 
 const NOME_BANCO = "PlantaTerraDB";
 const VERSAO = 7;
@@ -230,14 +231,13 @@ class PlantaTerraDB extends DBBase {
 
     // ---- estacao_nivel ----
 
-    async criarEstacao({ projetoId, nome, coordenada, alturaInstrumento, amarradaAEstacaoId = null }) {
+    async criarEstacao({ projetoId, nome = "", coordenada = null, amarradaAEstacaoId = null }) {
         const estacao = {
             id: this.gerarId(),
             projeto_id: projetoId,
-            nome,
+            nome: nome || nomePadraoDaEstacao(await this.listarEstacoes(projetoId)),
             coordenada,
-            altura_instrumento: alturaInstrumento,
-            offset_altitude: 0,
+            altitude_laser: 0,
             amarrada_a_estacao_id: amarradaAEstacaoId,
             criado_em: Date.now()
         };
@@ -245,17 +245,17 @@ class PlantaTerraDB extends DBBase {
         return estacao;
     }
 
-    async atualizarEstacao(estacao) {
-        return this.salvar("estacao_nivel", estacao);
+    /** Grava estações e leituras (já recalculadas) numa transação só. */
+    async salvarNivelamento(estacoesComLeituras) {
+        return this.salvarEmTransacao({
+            estacao_nivel: estacoesComLeituras.map(item => item.estacao),
+            leitura_nivel: estacoesComLeituras.flatMap(item => item.leituras)
+        });
     }
 
     async listarEstacoes(projetoId) {
         const estacoes = await this.obterTodos("estacao_nivel", "index_projeto_id", projetoId);
         return estacoes.sort((a, b) => a.criado_em - b.criado_em);
-    }
-
-    async obterEstacao(id) {
-        return this.obterPorChave("estacao_nivel", id);
     }
 
     // ---- leitura_nivel ----
@@ -274,17 +274,9 @@ class PlantaTerraDB extends DBBase {
         return leitura;
     }
 
-    async atualizarLeitura(leitura) {
-        return this.salvar("leitura_nivel", leitura);
-    }
-
     async listarLeituras(estacaoId) {
         const leituras = await this.obterTodos("leitura_nivel", "index_estacao_id", estacaoId);
         return leituras.sort((a, b) => a.criado_em - b.criado_em);
-    }
-
-    async removerLeitura(id) {
-        return this.remover("leitura_nivel", id);
     }
 
     async listarTodasLeiturasDoProjeto(projetoId) {

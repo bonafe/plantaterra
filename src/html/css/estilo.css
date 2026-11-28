@@ -600,27 +600,136 @@ andar-gps[hidden] {
     padding: 8px 10px;
 }
 
-.item-estacao summary {
-    cursor: pointer;
+.estacao-cabecalho,
+.item-leitura {
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: baseline;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 
-.item-estacao summary span {
+.estacao-dados {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    align-items: baseline;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.estacao-dados span {
     color: var(--cor-texto-suave);
     font-size: 0.85rem;
 }
 
+.item-estacao summary {
+    cursor: pointer;
+    min-height: 44px;
+    line-height: 44px;
+    font-size: 0.9rem;
+}
+
 .item-leitura {
+    flex-wrap: wrap;
     padding: 6px 0;
     border-bottom: 1px dashed var(--cor-borda);
     font-size: 0.9rem;
 }
 
+.item-leitura.ativa,
+.item-leitura:hover {
+    background: var(--cor-secundaria);
+}
+
+.item-leitura.ativa {
+    box-shadow: inset 4px 0 0 var(--cor-primaria);
+}
+
+.item-leitura .botao-zero {
+    flex-basis: 100%;
+    min-height: 44px;
+}
+
+.leitura-texto {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 4px 8px;
+    border: none;
+    background: transparent;
+    color: var(--cor-texto);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.leitura-cor {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px #1a202c;
+}
+
+.escala-calor {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0 8px;
+    color: var(--cor-texto-suave);
+    font-size: 0.8rem;
+}
+
+.escala-calor-barra {
+    flex: 1;
+    height: 12px;
+    border-radius: 6px;
+}
+
+.botao-editar {
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: 6px 12px;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    background: var(--cor-fundo-pagina);
+    color: var(--cor-texto);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
 .item-estacao [data-acao="nova-leitura"] {
-    margin-top: 10px;
+    margin-top: 6px;
+}
+
+/* Fundo e texto definidos juntos: vale nos dois temas. */
+.aviso-alturas {
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px solid #d69e2e;
+    border-radius: var(--raio);
+    background: #fffaf0;
+    color: #1a202c;
+}
+
+.aviso-alturas p {
+    margin: 0 0 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+    .aviso-alturas {
+        background: #3b2f1a;
+        color: #edf2f7;
+    }
+
+    .aviso-alturas .botao-secundario {
+        color: #9ae6b4;
+    }
 }
 
 .saf-resumo-total {
@@ -1608,7 +1717,7 @@ card-planta {
     overflow-y: auto;
     border: 1px solid var(--cor-borda);
     border-radius: var(--raio);
-    background: #fff;
+    background: var(--cor-fundo-pagina);
 }
 
 .opcoes-especie[hidden] {
@@ -1626,6 +1735,7 @@ card-planta {
     border: none;
     border-bottom: 1px solid var(--cor-borda);
     background: transparent;
+    color: var(--cor-texto);
     font: inherit;
     text-align: left;
     cursor: pointer;
@@ -2274,6 +2384,11 @@ ficha-taxon[hidden] {
 
 .linha-campos label {
     flex: 1;
+    min-width: 0;
+}
+
+.linha-campos {
+    align-items: flex-end;
 }
 
 /* Modo escuro das peças da biblioteca: fundos claros e cores primárias escuras viram versões legíveis */
@@ -2335,6 +2450,31 @@ ficha-taxon[hidden] {
         border-color: #fc8181;
         color: #fc8181;
     }
+
+    /* Peças com fundo claro fixo que ficavam ilegíveis (texto claro sobre creme) ou estridentes no tema escuro. */
+    .aviso-conflito-planta {
+        background: #3b2f1a;
+        border-color: #d69e2e;
+        color: #edf2f7;
+    }
+
+    .pix-valor-btn {
+        background: #2d3748;
+        color: #9ae6b4;
+    }
+
+    .pix-valor-btn.ativo {
+        background: var(--cor-primaria);
+        color: #fff;
+    }
+
+    .item-leitura .botao-zero {
+        color: #9ae6b4;
+    }
+
+    .backup-cabecalho-projetos .botao-icone-inline {
+        color: #9ae6b4;
+    }
 }
 
 
@@ -2353,4 +2493,68 @@ ficha-taxon[hidden] {
 .opcao-fotos-backup select {
     min-height: 44px;
     font: inherit;
+}
+
+
+/*
+ * Botões de ação das janelas e formulários (Cancelar, Fechar, Voltar, Pausar…): antes só os "primários" tinham estilo e os
+ * outros apareciam com o visual padrão do navegador (cinza/branco, preto sobre o escuro). Agora todos seguem o mesmo desenho.
+ * `:where` deixa a especificidade mínima: .botao-primario, .botao-perigo e afins continuam mandando no que redefinem.
+ */
+:where(.acoes-formulario, .captura-gps-acoes) > button:where(:not(.botao-primario)) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 10px 18px;
+    border: 2px solid var(--cor-borda);
+    border-radius: var(--raio);
+    background: var(--cor-fundo-pagina);
+    color: var(--cor-texto);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+:where(.acoes-formulario, .captura-gps-acoes) > button:where(:not(.botao-primario)):hover {
+    border-color: var(--cor-primaria);
+}
+
+:where(.acoes-formulario, .captura-gps-acoes) > button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.botao-perigo {
+    border-color: var(--cor-perigo);
+    color: var(--cor-perigo);
+}
+
+/* Janelas de escolha (Exportar, Limpar): opções empilhadas, com a explicação embaixo do rótulo. */
+.acoes-exportar > button {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    text-align: left;
+}
+
+@media (prefers-color-scheme: dark) {
+    /* Campos de formulário em toda a tela (não só dentro de <dialog>): sem miolo branco no tema escuro. */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+    select,
+    textarea {
+        background: #1a202c;
+        color: #edf2f7;
+        border-color: #4a5568;
+    }
+
+    .campo-limpavel-botao {
+        color: #9ae6b4;
+    }
+
+    .botao-perigo {
+        border-color: #fc8181;
+        color: #fc8181;
+    }
 }

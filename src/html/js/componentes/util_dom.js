@@ -56,9 +56,28 @@ export function descreverIdadePlantio(timestamp, agora = new Date()) {
     return `plantada há ${plural(anos, "ano", "anos")}${resto ? ` e ${plural(resto, "mês", "meses")}` : ""}`;
 }
 
-export function formatarMetros(valor, casasDecimais = 1) {
-    if (valor === null || valor === undefined || Number.isNaN(valor)) return "—";
-    return `${valor.toFixed(casasDecimais)} m`;
+/** Recebe metros (como o banco guarda) e mostra em centímetros, com até uma casa. */
+export function formatarCentimetros(metros) {
+    if (metros === null || metros === undefined || Number.isNaN(metros)) return "—";
+    // "+ 0" evita o "-0 cm".
+    return `${(Math.round(metros * 1000) / 10 + 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} cm`;
+}
+
+// Mapa de calor das altitudes: do ponto mais baixo (azul) ao mais alto (vermelho).
+const CORES_CALOR = ["#2b50d9", "#12b0d0", "#3cb44b", "#f5d000", "#f5820b", "#d7191c"];
+
+export const GRADIENTE_CALOR = `linear-gradient(to right, ${CORES_CALOR.join(", ")})`;
+
+/** Cor "rgb(...)" de uma altitude dentro da faixa { minimo, maximo }; cinza se não há altitude. */
+export function corDaAltitude(altitude, faixa) {
+    if (!Number.isFinite(altitude) || !faixa || faixa.minimo > faixa.maximo) return "rgb(113, 128, 150)";
+    const amplitude = faixa.maximo - faixa.minimo;
+    const fracao = amplitude > 0 ? Math.min(1, Math.max(0, (altitude - faixa.minimo) / amplitude)) : 0.5;
+    const posicao = fracao * (CORES_CALOR.length - 1);
+    const indice = Math.min(CORES_CALOR.length - 2, Math.floor(posicao));
+    const canais = cor => [1, 3, 5].map(i => parseInt(cor.slice(i, i + 2), 16));
+    const [de, ate] = [canais(CORES_CALOR[indice]), canais(CORES_CALOR[indice + 1])];
+    return `rgb(${de.map((c, i) => Math.round(c + (ate[i] - c) * (posicao - indice))).join(", ")})`;
 }
 
 export function formatarArea(metrosQuadrados) {

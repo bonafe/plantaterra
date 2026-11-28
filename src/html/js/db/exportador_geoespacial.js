@@ -1,6 +1,6 @@
 import { plantaTerraDB } from "./plantaterra_db.js";
 import { baixarArquivo, slug } from "./exportador_projeto.js";
-import { consolidarPontosDoProjeto } from "../dominio/nivelamento.js";
+import { consolidarPontosDoProjeto, recalcularNivelamento } from "../dominio/nivelamento.js";
 import { gerarCurvasDeNivel } from "../geo/curvas_de_nivel.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { agruparPlantasPorMetro } from "../dominio/saf.js";
@@ -15,7 +15,7 @@ const CORES_ISOLINHA = ["#2b6cb0", "#2f855a", "#b7791f", "#c05621", "#9b2c2c", "
  * salvos (ver docs/especificacao.md secao 14.4).
  */
 async function coletarDadosProjeto(projetoId) {
-    const [projeto, trilhaAtiva, estacoesComLeituras, safsComLinhasBrutas, elementosContexto] = await Promise.all([
+    const [projeto, trilhaAtiva, estacoesGravadas, safsComLinhasBrutas, elementosContexto] = await Promise.all([
         plantaTerraDB.obterProjeto(projetoId),
         plantaTerraDB.trilhaAtiva(projetoId),
         plantaTerraDB.listarTodasLeiturasDoProjeto(projetoId),
@@ -27,6 +27,7 @@ async function coletarDadosProjeto(projetoId) {
         throw new Error("Projeto não encontrado.");
     }
 
+    const estacoesComLeituras = recalcularNivelamento(estacoesGravadas);
     const pontos = consolidarPontosDoProjeto(estacoesComLeituras);
     const poligono = trilhaAtiva?.poligono?.length >= 3 ? trilhaAtiva.poligono : null;
     const { isolinhas } = pontos.length >= 3 ? gerarCurvasDeNivel(pontos, poligono) : { isolinhas: [] };
@@ -121,11 +122,13 @@ function construirGeoJSON({ projeto, poligono, estacoesComLeituras, isolinhas, s
     }
 
     for (const { estacao, leituras } of estacoesComLeituras) {
-        features.push({
-            type: "Feature",
-            properties: { tipo: "estacao", nome: estacao.nome, altura_instrumento: estacao.altura_instrumento },
-            geometry: { type: "Point", coordinates: [estacao.coordenada.lon, estacao.coordenada.lat] }
-        });
+        if (estacao.coordenada) {
+            features.push({
+                type: "Feature",
+                properties: { tipo: "estacao", nome: estacao.nome },
+                geometry: { type: "Point", coordinates: [estacao.coordenada.lon, estacao.coordenada.lat] }
+            });
+        }
 
         for (const leitura of leituras) {
             if (leitura.altitude_relativa === null) continue;
@@ -228,13 +231,14 @@ function construirKML({ projeto, poligono, estacoesComLeituras, isolinhas, safsC
     }
 
     for (const { estacao, leituras } of estacoesComLeituras) {
-        partes.push(`
-            <Placemark>
-                <name>${escaparXml(estacao.nome)} (instrumento)</name>
-                <description>Altura do instrumento: ${estacao.altura_instrumento} m</description>
-                <Point><coordinates>${estacao.coordenada.lon},${estacao.coordenada.lat},0</coordinates></Point>
-            </Placemark>
-        `);
+        if (estacao.coordenada) {
+            partes.push(`
+                <Placemark>
+                    <name>${escaparXml(estacao.nome)} (instrumento)</name>
+                    <Point><coordinates>${estacao.coordenada.lon},${estacao.coordenada.lat},0</coordinates></Point>
+                </Placemark>
+            `);
+        }
 
         for (const leitura of leituras) {
             if (leitura.altitude_relativa === null) continue;

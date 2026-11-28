@@ -3,10 +3,12 @@ import { exportarProjeto, importarArquivo } from "../db/exportador_projeto.js";
 import { exportarGeoJSON, exportarKML, exportarKMZ, exportarKMLTrilha } from "../db/exportador_geoespacial.js";
 import { CaptadorTrilha } from "../gps/captador_trilha.js";
 import {
-    calcularAltitudeLeitura,
-    calcularOffsetPorAmarracao,
-    recalcularLeiturasDaEstacao,
-    consolidarPontosDoProjeto
+    recalcularNivelamento,
+    corrigirAlturasDigitadasEmCm,
+    nomePadraoDaEstacao,
+    consolidarPontosDoProjeto,
+    leiturasDestoantes,
+    definirZero
 } from "../dominio/nivelamento.js";
 import { gerarCurvasDeNivel } from "../geo/curvas_de_nivel.js";
 import { simplificarTrilha, avaliarFechamento } from "../geo/douglas_peucker.js";
@@ -19,7 +21,7 @@ import { buscarCatalogo } from "../db/catalogo_nacional.js";
 import { obterRegistros } from "../db/biblioteca.js";
 import { especieDoRegistro } from "../dominio/biblioteca_unificada.js";
 import { analisarArquivoParaImportacao, importarParaProjeto } from "../kml/importador_saf.js";
-import { escaparHtml, formatarArea, formatarData } from "./util_dom.js";
+import { escaparHtml, formatarArea, formatarData, formatarCentimetros } from "./util_dom.js";
 import "./mapa_projeto.js";
 import "./captura_gps.js";
 import "./matriz_saf.js";
@@ -215,7 +217,8 @@ export class PainelProjeto extends HTMLElement {
         ]);
 
         this.trilhaAtiva = trilhaAtiva;
-        this.estacoesComLeituras = estacoesComLeituras;
+        // As altitudes são derivadas das medidas: refeitas aqui, a tela nunca depende de um valor gravado pela metade.
+        this.estacoesComLeituras = recalcularNivelamento(estacoesComLeituras);
         this.safsComLinhas = safsComLinhas;
 
         // Vários perímetros podem estar marcados como visíveis ao mesmo tempo
@@ -225,7 +228,7 @@ export class PainelProjeto extends HTMLElement {
 
         this.mapaElemento.definirElementosContexto(elementosContexto);
         this.mapaElemento.definirPerimetros(trilhasVisiveis);
-        this.mapaElemento.definirEstacoesELeituras(estacoesComLeituras);
+        this.mapaElemento.definirEstacoesELeituras(this.estacoesComLeituras);
         this.mapaElemento.definirLinhasSaf(safsComLinhas);
         // Na vista SAF o mapa acompanha a fileira/a pessoa: não reenquadra tudo a cada recarga.
         if (this._vista !== "saf") this.mapaElemento.ajustarZoomParaConteudo();
@@ -634,64 +637,97 @@ export class PainelProjeto extends HTMLElement {
         });
 
         dialogoEstacao.addEventListener("estacao-criada", async evento => {
-            await plantaTerraDB.criarEstacao({ projetoId: this.projetoId, ...evento.detail });
+            // Fecha já: um segundo toque em "Salvar" não cria duas estações.
             dialogoEstacao.fechar();
+            await plantaTerraDB.criarEstacao({ projetoId: this.projetoId, ...evento.detail });
             await this.recarregarTudo();
+        });
+
+        lista.addEventListener("leitura-destacada", evento => {
+            this.mapaElemento.destacarLeitura(evento.detail.leituraId);
+        });
+
+        this.mapaElemento.addEventListener("leitura-clicada", async evento => {
+            const { leituraId } = evento.detail;
+            if (this.querySelector(".painel-inferior").hidden) return;
+            if (this._vista !== "estacoes") await this._irParaVista("estacoes");
+            lista.selecionar(leituraId);
+            // Sem rótulo no realce: o toque no mapa já mostra o balão.
+            this.mapaElemento.destacarLeitura(leituraId, { comRotulo: false });
+        });
+
+        lista.addEventListener("zero-solicitado", async evento => {
+            await this._gravarNivelamento(definirZero(this.estacoesComLeituras, evento.detail.leituraId));
         });
 
         lista.addEventListener("nova-leitura-solicitada", evento => {
-            const { estacao } = this.estacoesComLeituras.find(item => item.estacao.id === evento.detail.estacaoId);
-            this._estacaoAtualParaLeitura = estacao;
+            this._estacaoIdParaLeitura = evento.detail.estacaoId;
             dialogoLeitura.abrir();
         });
 
+        lista.addEventListener("editar-estacao-solicitada", evento => {
+            dialogoEstacao.abrir({ estacao: this._itemDaEstacao(evento.detail.estacaoId).estacao });
+        });
+
+        lista.addEventListener("editar-leitura-solicitada", evento => {
+            const { estacaoId, leituraId } = evento.detail;
+            this._estacaoIdParaLeitura = estacaoId;
+            dialogoLeitura.abrir({ leitura: this._itemDaEstacao(estacaoId).leituras.find(l => l.id === leituraId) });
+        });
+
+        dialogoEstacao.addEventListener("estacao-editada", async evento => {
+            const { id, nome, coordenada } = evento.detail;
+            const outras = this.estacoesComLeituras.map(item => item.estacao).filter(e => e.id !== id);
+            await this._gravarNivelamento(this.estacoesComLeituras.map(item => item.estacao.id !== id ? item : {
+                ...item,
+                estacao: {
+                    ...item.estacao,
+                    nome: nome || nomePadraoDaEstacao(outras),
+                    coordenada
+                }
+            }));
+            dialogoEstacao.fechar();
+        });
+
         dialogoLeitura.addEventListener("leitura-criada", async evento => {
-            if (!this._estacaoAtualParaLeitura) return;
-            await this._salvarNovaLeitura(this._estacaoAtualParaLeitura, evento.detail);
+            const estacaoId = this._estacaoIdParaLeitura;
+            if (!estacaoId) return;
+            const { coordenada, alturaMira, ehPontoAmarracao } = evento.detail;
+            // Fecha já: um segundo toque em "Salvar" não duplica a leitura.
             dialogoLeitura.fechar();
-            await this.recarregarTudo();
+            const nova = await plantaTerraDB.criarLeitura({ estacaoId, coordenada, alturaMira, ehPontoAmarracao });
+            await this._gravarNivelamento(this.estacoesComLeituras.map(item => item.estacao.id !== estacaoId ? item
+                : { ...item, leituras: [...item.leituras, nova] }));
+        });
+
+        dialogoLeitura.addEventListener("leitura-editada", async evento => {
+            const { id, coordenada, alturaMira, ehPontoAmarracao } = evento.detail;
+            await this._gravarNivelamento(this.estacoesComLeituras.map(item => ({
+                ...item,
+                leituras: item.leituras.map(l => l.id !== id ? l
+                    : { ...l, coordenada, altura_mira: alturaMira, eh_ponto_amarracao: ehPontoAmarracao })
+            })));
+            dialogoLeitura.fechar();
+        });
+
+        lista.addEventListener("corrigir-alturas-solicitado", async evento => {
+            const pergunta = `Dividir por 100 as ${evento.detail.quantidade} leituras acima de 10 m (ex.: 150 m vira 150 cm)? ` +
+                "As demais não mudam. Se estiver em dúvida, cancele e faça um backup antes (menu ⋮).";
+            if (!confirm(pergunta)) return;
+            await this._gravarNivelamento(corrigirAlturasDigitadasEmCm(this.estacoesComLeituras));
         });
     }
 
-    /**
-     * Salva uma leitura e, se ela for o ponto de amarração que resolve o
-     * offset_altitude de uma estação recém-amarrada, calcula esse offset e
-     * recalcula a altitude relativa de todas as leituras da estação.
-     * Ver docs/especificacao.md secao 4.
-     */
-    async _salvarNovaLeitura(estacao, { coordenada, alturaMira, ehPontoAmarracao }) {
-        const precisaResolverAmarracao =
-            ehPontoAmarracao && estacao.amarrada_a_estacao_id && estacao.offset_altitude === 0;
+    _itemDaEstacao(estacaoId) {
+        return this.estacoesComLeituras.find(item => item.estacao.id === estacaoId);
+    }
 
-        if (precisaResolverAmarracao) {
-            const estacaoReferencia = this.estacoesComLeituras.find(
-                ({ estacao: e }) => e.id === estacao.amarrada_a_estacao_id
-            );
-            const leituraDeReferencia = estacaoReferencia?.leituras.find(l => l.eh_ponto_amarracao);
-
-            if (leituraDeReferencia) {
-                estacao.offset_altitude = calcularOffsetPorAmarracao(
-                    alturaMira,
-                    estacao,
-                    leituraDeReferencia.altitude_relativa
-                );
-                await plantaTerraDB.atualizarEstacao(estacao);
-
-                const leiturasExistentes = await plantaTerraDB.listarLeituras(estacao.id);
-                for (const leituraRecalculada of recalcularLeiturasDaEstacao(estacao, leiturasExistentes)) {
-                    await plantaTerraDB.atualizarLeitura(leituraRecalculada);
-                }
-            }
-        }
-
-        const novaLeitura = await plantaTerraDB.criarLeitura({
-            estacaoId: estacao.id,
-            coordenada,
-            alturaMira,
-            ehPontoAmarracao
-        });
-        novaLeitura.altitude_relativa = calcularAltitudeLeitura(estacao, alturaMira);
-        await plantaTerraDB.atualizarLeitura(novaLeitura);
+    /** Recalcula as altitudes (docs/especificacao.md secao 4), grava tudo de uma vez e redesenha. */
+    async _gravarNivelamento(estacoesComLeituras) {
+        await plantaTerraDB.salvarNivelamento(recalcularNivelamento(estacoesComLeituras));
+        // Curvas já desenhadas ficariam desatualizadas.
+        this.mapaElemento.definirIsolinhas([]);
+        await this.recarregarTudo();
     }
 
     _renderizarListaEstacoes() {
@@ -705,17 +741,29 @@ export class PainelProjeto extends HTMLElement {
             const pontos = consolidarPontosDoProjeto(this.estacoesComLeituras);
 
             if (pontos.length < 3) {
-                alert("São necessárias ao menos 3 leituras com altitude calculada para gerar curvas de nível.");
+                alert("São necessárias ao menos 3 leituras para gerar curvas de nível. " +
+                    `Este projeto tem ${this.estacoesComLeituras.length} estação(ões) e ${pontos.length} leitura(s).\n\n` +
+                    "A estação é só o lugar do laser. Para cada ponto medido com a régua, toque em \"+ Leitura nesta estação\".");
                 return;
             }
 
-            const { isolinhas, semDados } = gerarCurvasDeNivel(pontos, this.trilhaAtiva?.poligono ?? null);
-            if (semDados) {
-                alert("Não há dados suficientes para calcular as curvas de nível.");
-                return;
-            }
-
+            const { isolinhas } = gerarCurvasDeNivel(pontos, this.trilhaAtiva?.poligono ?? null);
             this.mapaElemento.definirIsolinhas(isolinhas);
+
+            const destoantes = leiturasDestoantes(this.estacoesComLeituras);
+            if (destoantes.length > 0) {
+                const nomes = destoantes.map(l => `${l.nome ? `${l.nome}: ` : ""}mira ${formatarCentimetros(l.altura_mira)}`);
+                alert(`Atenção: ${destoantes.length} leitura(s) muito diferente(s) das outras distorce(m) as curvas:\n` +
+                    `${nomes.join("\n")}\n\nConfira com "✏️ Editar" e gere as curvas de novo.`);
+            }
+
+            if (isolinhas.length === 0) {
+                const altitudes = pontos.map(p => p.altitude);
+                alert(Math.max(...altitudes) - Math.min(...altitudes) < 0.001
+                    ? "Todas as leituras têm a mesma altitude: não há desnível para desenhar curvas."
+                    : "Nenhuma curva apareceu. Confira se as leituras estão dentro do perímetro principal do projeto " +
+                      "(as curvas são recortadas por ele) e se não estão todas em linha reta ou no mesmo lugar.");
+            }
         });
     }
 
@@ -749,6 +797,10 @@ export class PainelProjeto extends HTMLElement {
                 this.mapaElemento.limparLinhasDestacadas();
             }
             this._vista = vista;
+            if (vista !== "estacoes") {
+                this.querySelector("lista-estacoes").selecionar(null);
+                this.mapaElemento.destacarLeitura(null);
+            }
 
             entrada.hidden = vista !== "entrada";
             secoes.hidden = vista !== "perimetro" && vista !== "estacoes";

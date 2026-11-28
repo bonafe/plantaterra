@@ -1,3 +1,5 @@
+import { formatarCentimetros, corDaAltitude } from "./util_dom.js";
+import { faixasDeAltitudePorEstacao, idsDasLeiturasZero } from "../dominio/nivelamento.js";
 /**
  * <mapa-projeto>: encapsula o mapa OpenLayers e todas as camadas visuais do
  * projeto (perímetro, estações/leituras, curvas de nível, trilha em progresso).
@@ -82,13 +84,15 @@ export class MapaProjeto extends HTMLElement {
         this._zIndex = 1;
         this.camadaContexto = this._criarCamada();
         this.camadaPerimetro = this._criarCamada();
-        this.camadaLeituras = this._criarCamada();
+        // Leituras por cima das curvas: os pontos precisam continuar visíveis e tocáveis.
         this.camadaIsolinhas = this._criarCamada();
+        this.camadaLeituras = this._criarCamada();
         this.camadaLinhasSaf = this._criarCamada();
         this.camadaLinhaDestacada = this._criarCamada();
         this.camadaSegmentoAtivo = this._criarCamada();
         this.camadaMetrosProximos = this._criarCamada();
         this.camadaPosicaoUsuario = this._criarCamada();
+        this.camadaLeituraDestacada = this._criarCamada();
         this.camadaTrilhaEmProgresso = this._criarCamada();
         this.camadaPontosTrilha = this._criarCamada();
         this.camadaPreviaPoligono = this._criarCamada();
@@ -282,41 +286,91 @@ export class MapaProjeto extends HTMLElement {
         });
     }
 
+    /**
+     * Estações (círculo branco) e leituras coloridas pela altitude (mapa de calor). Tocar numa leitura
+     * emite "leitura-clicada" { leituraId }.
+     */
     definirEstacoesELeituras(estacoesComLeituras) {
         this.camadaLeituras.clear();
+        this._leituras = new Map();
+        const faixas = faixasDeAltitudePorEstacao(estacoesComLeituras);
+        const zeros = idsDasLeiturasZero(estacoesComLeituras);
+        this._faixaGeral = {
+            minimo: Math.min(...[...faixas.values()].map(f => f.minimo)),
+            maximo: Math.max(...[...faixas.values()].map(f => f.maximo))
+        };
 
-        estacoesComLeituras.forEach(({ estacao, leituras }, indiceEstacao) => {
-            const cor = CORES_ISOLINHA[indiceEstacao % CORES_ISOLINHA.length];
-
-            this._adicionar(this.camadaLeituras,
-                new ol.geom.Point(paraMapa(estacao.coordenada.lat, estacao.coordenada.lon)),
-                estiloCirculo({ raio: 9, cor, largura: 3, corPreenchimento: "#ffffff" }),
-                { rotulo: `${estacao.nome} (instrumento)` });
+        estacoesComLeituras.forEach(({ estacao, leituras }) => {
+            // A posição do laser é opcional: não entra na conta.
+            if (estacao.coordenada) {
+                this._adicionar(this.camadaLeituras,
+                    new ol.geom.Point(paraMapa(estacao.coordenada.lat, estacao.coordenada.lon)),
+                    estiloCirculo({ raio: 9, cor: "#1a202c", largura: 3, corPreenchimento: "#ffffff" }),
+                    { rotulo: `${estacao.nome} (instrumento)` });
+            }
 
             leituras.forEach(leitura => {
-                const rotulo = leitura.altitude_relativa !== null
-                    ? `${leitura.altitude_relativa.toFixed(2)} m`
-                    : "sem altitude";
+                const coordenada = paraMapa(leitura.coordenada.lat, leitura.coordenada.lon);
+                const cor = corDaAltitude(leitura.altitude_relativa, faixas.get(estacao.id));
+                const rotulo = `${leitura.nome || estacao.nome}: ${formatarCentimetros(leitura.altitude_relativa)}` +
+                    (zeros.has(leitura.id) ? " (zero)" : "") +
+                    (leitura.eh_ponto_amarracao ? " (amarração)" : "");
+                this._leituras.set(leitura.id, { coordenada, cor, rotulo });
 
-                this._adicionar(this.camadaLeituras,
-                    new ol.geom.Point(paraMapa(leitura.coordenada.lat, leitura.coordenada.lon)),
+                this._adicionar(this.camadaLeituras, new ol.geom.Point(coordenada),
                     estiloCirculo({
-                        raio: 5, cor, largura: 2, corPreenchimento: cor,
-                        opacidadePreenchimento: leitura.eh_ponto_amarracao ? 1 : 0.6
+                        raio: 8, cor: leitura.eh_ponto_amarracao ? "#1a202c" : "#ffffff", largura: 2, corPreenchimento: cor
                     }),
-                    { rotulo: `${estacao.nome}: ${rotulo}${leitura.eh_ponto_amarracao ? " (amarração)" : ""}` });
+                    {
+                        rotulo,
+                        aoClicar: () => this.dispatchEvent(new CustomEvent("leitura-clicada", { detail: { leituraId: leitura.id } }))
+                    });
             });
         });
+
+        // Redesenha o realce que houver (depois de apagado, _leituraDestacada é null).
+        const { id = null, comRotulo } = this._leituraDestacada ?? {};
+        this.destacarLeitura(id, { comRotulo });
+    }
+
+    /** Realça uma leitura (null apaga o realce), trazendo-a para a tela se estiver fora. */
+    destacarLeitura(id, { comRotulo = true } = {}) {
+        this.camadaLeituraDestacada.clear();
+        const leitura = this._leituras?.get(id);
+        this._leituraDestacada = leitura ? { id, comRotulo } : null;
+        if (!leitura) return;
+
+        const feature = this._adicionar(this.camadaLeituraDestacada, new ol.geom.Point(leitura.coordenada), null);
+        feature.setStyle([
+            estiloCirculo({ raio: 18, cor: "#ffffff", largura: 7, corPreenchimento: "#ffffff", opacidadePreenchimento: 0 }),
+            estiloCirculo({ raio: 18, cor: "#1a202c", largura: 3, corPreenchimento: "#ffffff", opacidadePreenchimento: 0 }),
+            estiloCirculo({
+                raio: 11, cor: "#1a202c", largura: 2, corPreenchimento: leitura.cor,
+                texto: comRotulo ? leitura.rotulo : null
+            })
+        ]);
+
+        const tamanho = this.mapa.getSize();
+        if (tamanho && !ol.extent.containsCoordinate(this.visao.calculateExtent(tamanho), leitura.coordenada)) {
+            this.visao.animate({ center: leitura.coordenada, duration: 250 });
+        }
     }
 
     definirIsolinhas(isolinhas) {
         this.camadaIsolinhas.clear();
 
-        isolinhas.forEach(({ nivel, pontos }, indice) => {
-            const estilo = estiloLinha({ cor: CORES_ISOLINHA[indice % CORES_ISOLINHA.length], largura: 2 });
+        isolinhas.forEach(({ nivel, pontos }) => {
+            // Mesma escala de cores das leituras, com um contorno branco para destacar do mapa.
+            const estilo = [
+                estiloLinha({ cor: "#ffffff", largura: 5 }),
+                estiloLinha({ cor: corDaAltitude(nivel, this._faixaGeral), largura: 3 })
+            ];
+            // Cada curva é feita de segmentos: todo contorno vai por baixo de toda cor, senão a linha sai pontilhada.
+            estilo[1].setZIndex(1);
             pontos.forEach(([p1, p2]) => {
-                this._adicionar(this.camadaIsolinhas, new ol.geom.LineString(this._coordenadas([p1, p2])),
-                    estilo, { rotulo: `${nivel.toFixed(2)} m` });
+                const feature = this._adicionar(this.camadaIsolinhas, new ol.geom.LineString(this._coordenadas([p1, p2])),
+                    null, { rotulo: formatarCentimetros(nivel) });
+                feature.setStyle(estilo);
             });
         });
     }

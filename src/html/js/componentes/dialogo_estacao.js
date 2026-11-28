@@ -2,18 +2,21 @@ import { ReactiveComponent } from "../../vendor/ultima/reactive_component.js";
 import "./campo_coordenada.js";
 
 /**
- * <dialogo-estacao>: diálogo "Nova estação de nível" (docs/especificacao.md
+ * <dialogo-estacao>: diálogo de criar ou editar uma estação de nível (docs/especificacao.md
  * secao 4). Não conhece banco nem o GPS: recebe a função de captura e devolve um evento.
  *
  * Feito sobre o ReactiveComponent do UltimaJS (template em dialogo_estacao.html);
- * estado reativo: { estacoesParaAmarrar, semAmarracao, semCoordenada }.
+ * estado reativo: { titulo, rotuloSalvar, estacoesParaAmarrar, semAmarracao }.
  *
  * Entrada:
  *   capturador                       async () => coordenada | null (ver <campo-coordenada>)
- *   abrir({ estacoesParaAmarrar })   [{ id, nome }] das estações que já têm ponto de amarração
+ *   abrir({ estacoesParaAmarrar })   nova; [{ id, nome }] das estações que já têm ponto de amarração
+ *   abrir({ estacao })               edição (a amarração não muda)
  *   fechar()
  * Eventos:
- *   "estacao-criada"  detail { nome, coordenada:{lat,lon,precisao}, alturaInstrumento, amarradaAEstacaoId|null }
+ *   "estacao-criada"   detail { nome, coordenada:{lat,lon,precisao}|null, amarradaAEstacaoId|null }
+ *   "estacao-editada"  detail { id, nome, coordenada|null }
+ *   "nome" pode vir vazio e "coordenada" nula nos dois.
  */
 export class DialogoEstacao extends ReactiveComponent {
 
@@ -22,7 +25,16 @@ export class DialogoEstacao extends ReactiveComponent {
     }
 
     connectedCallback() {
-        if (!this.state) this.state = { estacoesParaAmarrar: [], semAmarracao: true, semCoordenada: true };
+        if (!this.state) this.state = DialogoEstacao._estado({});
+    }
+
+    static _estado({ estacao = null, estacoesParaAmarrar = [] }) {
+        return {
+            titulo: estacao ? "Editar estação" : "Nova estação de nível",
+            rotuloSalvar: estacao ? "Salvar alterações" : "Salvar estação",
+            estacoesParaAmarrar,
+            semAmarracao: estacoesParaAmarrar.length === 0
+        };
     }
 
     onLoad() {
@@ -31,9 +43,6 @@ export class DialogoEstacao extends ReactiveComponent {
         this._formulario = this.querySelector("form");
         this._campoCoordenada = this.querySelector("campo-coordenada");
         this._campoCoordenada.capturador = this._capturador;
-        this._campoCoordenada.addEventListener("coordenada-capturada", () => {
-            this.state = { ...this.state, semCoordenada: false };
-        });
     }
 
     set capturador(funcao) {
@@ -41,11 +50,14 @@ export class DialogoEstacao extends ReactiveComponent {
         if (this._campoCoordenada) this._campoCoordenada.capturador = funcao;
     }
 
-    async abrir({ estacoesParaAmarrar = [] } = {}) {
+    async abrir({ estacao = null, estacoesParaAmarrar = [] } = {}) {
         await this.whenLoaded();
         this._formulario.reset();
-        this._campoCoordenada.limpar();
-        this.state = { estacoesParaAmarrar, semAmarracao: estacoesParaAmarrar.length === 0, semCoordenada: true };
+        this._idEmEdicao = estacao?.id ?? null;
+        if (estacao?.coordenada) this._campoCoordenada.definir(estacao.coordenada);
+        else this._campoCoordenada.limpar();
+        if (estacao) this._formulario.elements.nome.value = estacao.nome;
+        this.state = DialogoEstacao._estado({ estacao, estacoesParaAmarrar });
         this._dialogo.showModal();
     }
 
@@ -55,17 +67,14 @@ export class DialogoEstacao extends ReactiveComponent {
 
     aoEnviar(evento) {
         evento.preventDefault();
-        const coordenada = this._campoCoordenada.valor;
-        if (!coordenada) return;
         const dados = new FormData(this._formulario);
-        this.dispatchEvent(new CustomEvent("estacao-criada", {
-            detail: {
-                nome: dados.get("nome").trim(),
-                coordenada,
-                alturaInstrumento: Number(dados.get("altura_instrumento")),
-                amarradaAEstacaoId: dados.get("amarrada_a") || null
-            }
-        }));
+        const comuns = {
+            nome: dados.get("nome").trim(),
+            coordenada: this._campoCoordenada.valor
+        };
+        this.dispatchEvent(this._idEmEdicao
+            ? new CustomEvent("estacao-editada", { detail: { id: this._idEmEdicao, ...comuns } })
+            : new CustomEvent("estacao-criada", { detail: { ...comuns, amarradaAEstacaoId: dados.get("amarrada_a") || null } }));
     }
 }
 

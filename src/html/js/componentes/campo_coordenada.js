@@ -11,7 +11,7 @@ const STATUS_INICIAL = "Nenhuma coordenada capturada ainda.";
  * campo_coordenada.html e o estado `{ status, valor }` é reativo — mudar o estado
  * redesenha a tela. DOM normal (sem Shadow DOM) para valer o css/estilo.css do app.
  *
- * Entrada:  capturador, valor (leitura), limpar()
+ * Entrada:  capturador, valor (leitura), definir(coordenada), limpar()
  * Eventos:  "coordenada-capturada" detail { lat, lon, precisao }
  */
 export class CampoCoordenada extends ReactiveComponent {
@@ -31,6 +31,14 @@ export class CampoCoordenada extends ReactiveComponent {
 
     limpar() {
         this.state = { status: STATUS_INICIAL, valor: null };
+    }
+
+    /** Mostra uma coordenada já gravada (edição): ela vale até uma nova captura dar certo. */
+    definir(coordenada) {
+        this.state = {
+            status: `Posição gravada: ${coordenada.lat.toFixed(6)}, ${coordenada.lon.toFixed(6)}. Capture de novo só se estiver no local.`,
+            valor: coordenada
+        };
     }
 
     async capturar() {

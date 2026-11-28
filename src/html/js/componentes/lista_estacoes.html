@@ -1,22 +1,52 @@
+<p class="ajuda-campo">
+    <strong>Estação</strong> é onde o laser está montado. <strong>Leitura</strong> é cada ponto onde você põe a régua.
+    As curvas de nível usam as leituras (no mínimo 3). A primeira leitura vale zero; toque em outra para fazer dela o zero.
+</p>
+<template data-if="temSuspeitas">
+    <div class="aviso-alturas">
+        <p>{{ textoSuspeitas }}</p>
+        <button type="button" class="botao-secundario" data-acao="corrigir-alturas" data-on='{"click":"corrigirAlturas"}'>Corrigir (eram cm)</button>
+    </div>
+</template>
 <ul class="lista-estacoes">
     <template data-if="vazia">
         <li class="lista-vazia">Nenhuma estação ainda.</li>
     </template>
     <template data-for="e in itens : id">
         <li class="item-estacao">
-            <details>
-                <summary>
+            <div class="estacao-cabecalho">
+                <div class="estacao-dados">
                     <strong>{{ e.nome }}</strong>
-                    <span>altura instr.: {{ e.alturaInstrumento }}</span>
-                    <span>offset: {{ e.offset }}</span>
-                </summary>
+                    <span>{{ e.ligacao }}</span>
+                </div>
+                <button type="button" class="botao-editar" data-acao="editar-estacao" data-on='{"click":"editarEstacao"}'>✏️ Editar</button>
+            </div>
+            <details>
+                <summary>{{ e.resumoLeituras }}</summary>
+                <template data-if="e.temEscala">
+                    <div class="escala-calor" aria-label="Cor de cada ponto conforme a altitude">
+                        <span>baixo {{ e.minimo }}</span>
+                        <span class="escala-calor-barra" data-style='{"background":"gradiente"}'></span>
+                        <span>{{ e.maximo }} alto</span>
+                    </div>
+                </template>
                 <ul class="lista-leituras">
                     <template data-for="l in e.leituras : id">
-                        <li class="item-leitura">{{ l.texto }}</li>
+                        <li class="item-leitura" data-class='{"ativa":"l.ativa"}' data-bind='{"data-leitura":"l.id"}'
+                            data-on='{"click":"selecionarLeitura","pointerenter":"apontarLeitura","pointerleave":"soltarLeitura"}'>
+                            <button type="button" class="leitura-texto">
+                                <span class="leitura-cor" data-style='{"background-color":"l.cor"}'></span>
+                                <span>{{ l.texto }}</span>
+                            </button>
+                            <button type="button" class="botao-editar" data-acao="editar-leitura" data-on='{"click":"editarLeitura"}'>✏️ Editar</button>
+                            <template data-if="l.mostrarZero">
+                                <button type="button" class="botao-secundario botao-zero" data-acao="definir-zero" data-on='{"click":"definirZero"}'>Definir como zero</button>
+                            </template>
+                        </li>
                     </template>
                 </ul>
-                <button type="button" class="botao-secundario" data-acao="nova-leitura" data-on='{"click":"novaLeitura"}'>+ Leitura nesta estação</button>
             </details>
+            <button type="button" class="botao-secundario" data-acao="nova-leitura" data-on='{"click":"novaLeitura"}'>+ Leitura nesta estação</button>
         </li>
     </template>
 </ul>

@@ -1,16 +1,16 @@
 <dialog class="dialogo-leitura">
     <form class="formulario-leitura" data-on='{"submit":"aoEnviar"}'>
-        <h2>Nova leitura</h2>
+        <h2>{{ titulo }}</h2>
         <campo-coordenada></campo-coordenada>
-        <label>Altura lida na mira (m)
-            <input type="number" name="altura_mira" step="0.001" min="0" required />
+        <label>Altura lida na mira (cm)
+            <input type="number" name="altura_mira" step="0.1" min="0" max="1000" inputmode="decimal" placeholder="ex.: 123" required />
         </label>
         <label class="campo-checkbox">
             <input type="checkbox" name="eh_ponto_amarracao" />
             É o ponto de amarração com outra estação
         </label>
         <div class="acoes-formulario">
-            <button type="submit" class="botao-primario" data-bind='{"disabled":"semCoordenada"}'>Salvar leitura</button>
+            <button type="submit" class="botao-primario" data-bind='{"disabled":"semCoordenada"}'>{{ rotuloSalvar }}</button>
             <button type="button" data-acao="cancelar-leitura" data-on='{"click":"fechar"}'>Cancelar</button>
         </div>
     </form>

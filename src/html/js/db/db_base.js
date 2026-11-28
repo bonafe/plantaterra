@@ -88,6 +88,21 @@ export class DBBase extends EventTarget {
         });
     }
 
+    /** Grava registros de vários stores numa transação só: ou entra tudo, ou nada. */
+    async salvarEmTransacao(registrosPorStore) {
+        const banco = await this._banco();
+        return new Promise((resolve, reject) => {
+            const transacao = banco.transaction(Object.keys(registrosPorStore), "readwrite");
+            transacao.oncomplete = () => resolve(true);
+            transacao.onerror = () => reject(transacao.error);
+            transacao.onabort = () => reject(transacao.error);
+            for (const [nomeStore, registros] of Object.entries(registrosPorStore)) {
+                const store = transacao.objectStore(nomeStore);
+                registros.forEach(registro => store.put(structuredClone(registro)));
+            }
+        });
+    }
+
     async remover(objectStore, chave) {
         const banco = await this._banco();
         return new Promise((resolve, reject) => {

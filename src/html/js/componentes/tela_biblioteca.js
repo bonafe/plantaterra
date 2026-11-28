@@ -108,10 +108,10 @@ export class TelaBiblioteca extends HTMLElement {
                             <datalist id="lista-formas-de-vida">${FORMAS_DE_VIDA.map(f => `<option value="${f}"></option>`).join("")}</datalist>
                         </label>
                         <div class="linha-campos">
-                            <label>Altura mínima (m)
+                            <label>Altura mín. (m)
                                 <input type="number" name="altura_min" min="0.1" step="0.1" inputmode="decimal" />
                             </label>
-                            <label>Altura máxima (m)
+                            <label>Altura máx. (m)
                                 <input type="number" name="altura_max" min="0.1" step="0.1" inputmode="decimal" />
                             </label>
                         </div>

@@ -27,43 +27,38 @@ Todo o texto de interface e desta especificação é em **pt-BR**.
 
 - **Projeto**: uma propriedade/terreno sendo levantado. Contém um perímetro (opcional) e um ou mais registros de nível.
 - **Trilha de perímetro (`Trilha`)**: sequência de coordenadas GPS capturadas enquanto a pessoa caminha pela divisa do terreno. Vira um polígono fechado.
-- **Estação de nível (`EstacaoNivel`)**: um local fixo onde o nível a laser rotativo foi instalado durante um período de leituras. Tem uma coordenada GPS própria e uma **altura de instrumento** (altura do plano do laser acima do chão nesse ponto).
+- **Estação de nível (`EstacaoNivel`)**: um local fixo onde o nível a laser rotativo foi instalado durante um período de leituras. Reúne as leituras feitas com o laser parado ali; nome e posição GPS são opcionais.
 - **Leitura (`Leitura`)**: um ponto do terreno visitado enquanto uma `EstacaoNivel` está ativa. Contém a coordenada GPS do ponto e a **altura lida na mira** (distância vertical do chão até onde o feixe do laser incide).
 - **Ponto de amarração (`PontoAmarracao`)**: uma leitura que foi repetida em duas `EstacaoNivel` diferentes (a pessoa não move a mira, só o instrumento), usada para conectar as altitudes relativas de duas estações em uma única referência.
 - **Curva de nível**: linha de altitude relativa constante, calculada por interpolação a partir de todas as `Leitura`s de todas as `EstacaoNivel` de um projeto, já unificadas pelos pontos de amarração.
 
 ## 4. Fundamento do cálculo de altitude (nivelamento ótico)
 
-Um nível a laser rotativo emite um plano horizontal de luz a 360°. Isso significa que **todos os pontos atingidos pelo feixe, em qualquer direção, estão exatamente na mesma altitude absoluta** (a altitude do próprio instrumento).
-
-Para cada `EstacaoNivel` com altura de instrumento `H_instrumento` (medida da base do tripé/instrumento até o plano do laser) instalada num ponto de altitude relativa `A_estacao` (arbitrária, ex. `0` para a primeira estação de um projeto):
+Um nível a laser rotativo emite um plano horizontal de luz a 360°: **todos os pontos atingidos pelo feixe, em qualquer direção, estão na mesma altitude**. Chamando essa altitude de `A_laser`, a leitura `h` na régua (distância do chão até o feixe) dá:
 
 ```
-altitude_do_plano_do_laser = A_estacao + H_instrumento
+altitude_relativa(ponto) = A_laser - h
 ```
 
-Para cada `Leitura` feita nessa estação, em que a pessoa segura a mira e lê a altura `h_leitura` em que o feixe incide na régua:
+Número maior na régua = chão mais baixo. Entre dois pontos da mesma estação o desnível é só a diferença das leituras (`h1 - h2`): **a altura do instrumento se cancela e não é pedida** (versões anteriores a pediam; o valor gravado nos registros antigos é preservado e ignorado). Basta o laser ficar parado enquanto se mede.
 
-```
-altitude_relativa(ponto_da_leitura) = altitude_do_plano_do_laser - h_leitura
-                                     = A_estacao + H_instrumento - h_leitura
-```
+### Zero da referência
+
+Como as altitudes são relativas, uma leitura vale 0: por padrão **a primeira leitura da estação principal**; tocando em outra aparece "Definir como zero". A escolhida ganha `zero_definido_em`. Há um zero por referência — estações independentes têm cada uma o seu; se duas referências forem unidas depois, vale o escolhido por último. Trocar o zero soma o mesmo tanto a todas as altitudes (relevo, cores e formato das curvas não mudam; as medidas também não).
 
 ### Conectando múltiplas estações (pontos de amarração)
 
-Como o instrumento tem alcance/linha de visada limitados, o usuário eventualmente muda o laser de lugar, criando uma nova `EstacaoNivel`. Para que as leituras da nova estação fiquem na **mesma referência de altitude** das anteriores, a última leitura antes de mover o instrumento (ou a primeira depois) deve ser repetida com a mira **parada no mesmo lugar físico**, uma vez com cada estação — esse é o ponto de amarração.
-
-Dado um ponto de amarração lido pela estação `E1` (já com altitude relativa conhecida `alt_1`) e novamente pela estação `E2` (recém-criada, ainda com `A_estacao = 0` provisório):
+O instrumento tem alcance e linha de visada limitados, então o usuário eventualmente o muda de lugar, criando uma nova estação. Para as duas ficarem na **mesma referência**, um mesmo ponto físico é lido pelas duas (a última leitura antes de mover o instrumento ou a primeira depois, com a mira parada) — o ponto de amarração. Lido pela `E1` (altitude `alt_1` já conhecida) e pela `E2` com `h_2`:
 
 ```
-alt_2_bruta = 0 + H_instrumento_E2 - h_leitura_amarracao_em_E2
-offset_E2   = alt_1 - alt_2_bruta
-A_estacao(E2) = offset_E2
+A_laser(E2) = alt_1 + h_2
 ```
 
-Esse `offset` é somado a todas as leituras da `E2` (e de estações futuras amarradas a ela), formando uma cadeia de nivelamento — a mesma técnica usada em topografia clássica com nível ótico, adaptada para o nível a laser + GPS.
+Sem o par de leituras, a estação amarrada fica com referência própria e a lista avisa que falta a leitura. Estações independentes não têm altitudes comparáveis entre si.
 
-Se o usuário não fizer amarração entre estações, cada `EstacaoNivel` fica com sua própria referência local (`A_estacao = 0`) e o app deixa isso explícito na interface (curvas de nível calculadas por estação, sem juntar todas no mesmo mapa de altitude).
+**Recálculo** (`dominio/nivelamento.js#recalcularNivelamento`): `altitude_laser` e as altitudes são valores **derivados** das medidas (leituras da régua, amarrações e zero). São refeitos para o projeto inteiro a cada leitura nova ou edição — uma medida se propaga às estações amarradas, em cadeia — e gravados numa única transação; o painel também os refaz em memória ao carregar. A amarração usa a **primeira** leitura marcada de cada uma das duas estações. Limitação conhecida: numa cadeia E1→E2→E3, a E3 se liga pela primeira amarração da E2, que é o ponto compartilhado com a E1 — o resultado só está certo se as três usarem o mesmo ponto físico.
+
+**Unidades**: a pessoa digita e lê réguas, altitudes e curvas em **centímetros**; o banco, o backup e as exportações GIS continuam em **metros** (a conversão é só na interface, então dados antigos não precisam de migração). Leituras gravadas acima de 10 m são fisicamente implausíveis — foram digitadas em cm quando o campo era em metros — e a lista oferece corrigi-las (divide só essas por 100, com confirmação).
 
 ## 5. Estabilização da coordenada GPS
 
@@ -76,7 +71,7 @@ O GPS de celular tem ruído de alguns metros. Ideia herdada do protótipo antigo
 5. A UI mostra em tempo real: número de amostras coletadas, precisão atual reportada pelo GPS, e um indicador visual de "qualidade do sinal" (verde/amarelo/vermelho conforme a precisão).
 6. Se a precisão nunca atingir um mínimo aceitável dentro do tempo máximo, o app avisa o usuário e permite: aceitar mesmo assim (marcando a leitura como "baixa precisão") ou tentar de novo.
 
-Esse fluxo é usado tanto para capturar a coordenada de uma `EstacaoNivel` quanto de cada `Leitura`.
+Esse fluxo é usado para capturar a coordenada de cada `Leitura` e, opcionalmente, a de uma `EstacaoNivel`.
 
 ## 6. Captura de trilha do perímetro
 
@@ -104,7 +99,7 @@ Convexidade é uma característica do terreno, não de uma rodada de captura —
 
 ## 7. Geração das curvas de nível
 
-Entrada: lista de pontos `(lat, lon, altitude_relativa)` vindos de todas as `Leitura`s do projeto (já ajustadas pelos offsets de amarração), mais opcionalmente as `EstacaoNivel` (também têm coordenada + altitude, podem entrar como pontos de leitura implícitos).
+Entrada: lista de pontos `(lat, lon, altitude_relativa)` vindos de todas as `Leitura`s do projeto (já ajustadas pelos offsets de amarração). As estações não entram: o chão sob o laser só vira ponto se for lido com a régua.
 
 Pipeline:
 
@@ -113,7 +108,8 @@ Pipeline:
 3. **Extração de isolinhas**: algoritmo de **Marching Squares** sobre a grade interpolada, com um espaçamento de curva configurável (padrão sugerido automaticamente a partir do desnível total medido, ex. desnível/10).
 4. **Reprojeção** das isolinhas de volta para lat/lon e desenho no mapa como linhas, uma cor por faixa de altitude (rótulo com o valor da curva).
 5. Fora do polígono do perímetro (quando existir), as curvas são recortadas/ocultadas — não extrapolar visualmente para fora da propriedade.
-6. Pontos de leitura brutos ficam disponíveis como uma camada que pode ser ligada/desligada (para conferência), assim como o rótulo de qual `EstacaoNivel` cada leitura pertence.
+6. **Mapa de calor**: cada leitura é desenhada com a cor da sua altitude (azul = mais baixo → vermelho = mais alto), no mapa e na lista, com a legenda mínimo–máximo em cada estação. Estações ligadas por amarração dividem a mesma escala; independentes têm a própria (`dominio/nivelamento.js#faixasDeAltitudePorEstacao`). Com 8 leituras ou mais, a que ficar além de 3 intervalos interquartis (piso de 25 cm) é marcada na lista, fica fora da escala de cores e é citada num aviso ao gerar as curvas (continua entrando no cálculo delas: nenhum dado é descartado). As curvas usam a mesma escala, sobre a faixa de todas as leituras. Na lista, passar o mouse aponta a leitura no mapa e clicar/tocar a seleciona; tocar no ponto do mapa seleciona a leitura na lista.
+7. Pontos de leitura brutos ficam disponíveis como uma camada que pode ser ligada/desligada (para conferência), assim como o rótulo de qual `EstacaoNivel` cada leitura pertence.
 
 Todos os algoritmos acima (Douglas-Peucker, IDW, Marching Squares, shoelace) são implementados diretamente no projeto (arquivo `src/geo/`), sem dependências externas, já que optamos por vendorizar só a biblioteca de mapa (OpenLayers).
 
@@ -157,10 +153,10 @@ Diferente do campo `ativo` (histórico de re-mapeamentos de UM perímetro, só u
 {
   id: uuid,
   projeto_id: uuid,
-  nome: string,                     // ex: "Estação 1"
-  coordenada: { lat, lon, precisao },
-  altura_instrumento: number,       // metros
-  offset_altitude: number,          // calculado via ponto de amarração; 0 se é a estação-base
+  nome: string,                     // opcional na tela: sem nome, grava "Estação N"
+  coordenada: { lat, lon, precisao } | null,  // opcional, só para marcar no mapa
+  altitude_laser: number,           // derivado (§4): altitude do plano do laser
+  // altura_instrumento e offset_altitude: campos de versões anteriores, preservados e ignorados
   amarrada_a_estacao_id: uuid | null,
   criado_em: timestamp
 }
@@ -174,7 +170,9 @@ Diferente do campo `ativo` (histórico de re-mapeamentos de UM perímetro, só u
   coordenada: { lat, lon, precisao },
   altura_mira: number,              // metros
   eh_ponto_amarracao: boolean,
-  altitude_relativa: number,        // calculado = offset_estacao + altura_instrumento - altura_mira
+  zero_definido_em: timestamp | undefined,  // esta leitura vale altitude 0 na sua referência (§4)
+  nome: string | undefined,         // opcional, só exibido na lista (vem de dados convertidos; não há campo na tela)
+  altitude_relativa: number,        // derivado = altitude_laser da estação - altura_mira
   criado_em: timestamp
 }
 ```
@@ -208,9 +206,10 @@ Além dele, o projeto pode ser exportado em **GeoJSON** e **KML/KMZ** para uso e
 1. **Lista de projetos** (tela inicial): criar novo projeto, abrir existente, importar de arquivo, abrir a **Biblioteca de plantas** (§15.1, rota `#/biblioteca`).
 2. **Painel do projeto**: mapa (OpenLayers) ocupando a maior parte da tela, com abas/botões flutuantes para alternar camadas (perímetro, estações+leituras, curvas de nível) e menu de ações:
    - "Mapear perímetro" → tela de captura de trilha (§6).
-   - "Nova estação de nível" → formulário: capturar coordenada (§5) + altura do instrumento.
-   - Dentro de uma estação ativa: "Nova leitura" → captura coordenada (§5) + altura da mira + checkbox "é ponto de amarração".
-   - "Gerar curvas de nível" → roda o pipeline do §7 e desenha no mapa.
+   - "Nova estação de nível" → nada é obrigatório: nome, posição (§5) e, se houver estação com ponto de amarração, a qual amarrar.
+   - Em cada estação: "+ Leitura nesta estação" → captura coordenada (§5) + altura da mira (cm) + checkbox "é ponto de amarração".
+   - "✏️ Editar" em cada estação (nome, posição) e em cada leitura (régua, amarração, posição). A posição gravada é mantida a menos que se capture outra; com qual estação ela é amarrada não muda na edição.
+   - "Gerar curvas de nível" → roda o pipeline do §7 e desenha no mapa; se faltar leitura ou nenhuma curva aparecer, diz o motivo. As curvas são apagadas quando uma medida muda.
    - "Exportar" / "Excluir projeto".
 3. **Tela de captura de coordenada** (componente reutilizado pelos fluxos acima): mostra indicador de qualidade do GPS, contagem de amostras, e permite confirmar ou tentar de novo.
 
@@ -439,7 +438,7 @@ A vista SAF é composta por componentes independentes, ligados pelo `painel_proj
 - **`<editor-pontos-trilha>`** (`componentes/editor_pontos_trilha.js`): painel do editor de pontos brutos de uma rodada do perímetro (§6). Guarda os pontos em edição, o selecionado e se houve alteração; entrada `abrir({pontos})`, `selecionarPonto(indice)`, `fechar()`, `aberto`; eventos `pontos-mudaram {pontos, indiceSelecionado, tMin, tMax, primeira}` (redesenhar no mapa), `salvar-solicitado {pontos}` (validar o polígono e gravar; depois `fechar()`) e `fechado`. Pedir confirmação ao descartar alterações é dele; mapa, validação e banco ficam em `painel_projeto.js#_wireEditorPontosTrilha`.
 - **`<dialogo-historico-perimetro>`** (`componentes/dialogo_historico_perimetro.js`): histórico de rodadas do perímetro (§6). Entrada `rodadas` (trilhas; ordena por mais recente), `abrir()`, `fechar()`, `aberto`; eventos com o id da rodada: `definir-principal`, `excluir-rodada` (já confirmado), `editar-pontos`, `exportar-kml`, `renomear-rodada {id, nome}` e `visibilidade-alterada {id, visivel}`. O renomear inline (Enter confirma, Esc cancela, sair do campo confirma) é dele; banco, editor de pontos, exportação e recarga ficam em `painel_projeto.js#_wireHistoricoPerimetro`.
 - **`<dialogo-importar-saf>`** (`componentes/dialogo_importar_saf.js`): pré-visualização da importação de KML/KMZ (§14.3, §14.8). Entrada `abrir({safsEncontradas, elementosContexto, avisos})` (o resultado de `analisarArquivoParaImportacao`), `fechar()`, `aberto`; evento `importacao-confirmada {safsEncontradas, elementosContexto}`. Ler o arquivo e gravar (`importarParaProjeto`) ficam em `painel_projeto.js#_wireSaf`.
-- **Estações e leituras (§4):** `<dialogo-estacao>` (`abrir({estacoesParaAmarrar})`, evento `estacao-criada {nome, coordenada, alturaInstrumento, amarradaAEstacaoId}`), `<dialogo-leitura>` (`abrir()`, evento `leitura-criada {coordenada, alturaMira, ehPontoAmarracao}`), `<lista-estacoes>` (`estacoes = [{estacao, leituras}]`, evento `nova-leitura-solicitada {estacaoId}`) e o auxiliar `<campo-coordenada>` (linha "status + Capturar posição GPS"; recebe uma função `capturador` — o painel passa `<captura-gps>.abrir()` — e emite `coordenada-capturada`). Gravar a estação/leitura, resolver a amarração e recalcular altitudes (`painel_projeto.js#_salvarNovaLeitura`, regra do §4) continua no painel.
+- **Estações e leituras (§4):** `<dialogo-estacao>` (`abrir({estacoesParaAmarrar})` ou `abrir({estacao})`; eventos `estacao-criada {nome, coordenada, amarradaAEstacaoId}` e `estacao-editada {id, nome, coordenada}`), `<dialogo-leitura>` (`abrir()` ou `abrir({leitura})`; eventos `leitura-criada` / `leitura-editada` com `{coordenada, alturaMira, ehPontoAmarracao}`), `<lista-estacoes>` (`estacoes = [{estacao, leituras}]`, `selecionar(leituraId)`; eventos `nova-leitura-solicitada`, `editar-estacao-solicitada`, `editar-leitura-solicitada`, `leitura-destacada`, `zero-solicitado`, `corrigir-alturas-solicitado`) e o auxiliar `<campo-coordenada>` (linha "status + Capturar posição GPS"; recebe uma função `capturador` — o painel passa `<captura-gps>.abrir()` — e emite `coordenada-capturada`). Gravar e recalcular altitudes (`painel_projeto.js#_gravarNivelamento`, regra do §4) continua no painel.
 - Quem orquestra (`painel_projeto.js#_wireVistaSaf`) traduz eventos em ações no mapa, na matriz e na escolha do SAF.
 
 ### 14.12 Migração para o UltimaJS (etapa 2, em andamento)
@@ -451,7 +450,7 @@ O núcleo do UltimaJS (`component_base.js`, `reactive_component.js`, `controller
 - **`shadowDom: false` sempre** — Shadow DOM isolaria o componente do `css/estilo.css` único do app.
 - **O template carrega de forma assíncrona** (`fetch`): o `.html` precisa estar em `ARQUIVOS_DO_APP` do `sw.js` (senão quebra offline), e o componente só renderiza quando `loaded`. Estado definido antes do carregamento fica guardado e é aplicado depois — por isso os métodos de entrada (`limpar()`, etc.) podem ser chamados logo após a criação.
 - **Não definir estado no construtor** (`createElement` não admite atributos ali, e o estado é espelhado no atributo `data-state`): inicialize em `connectedCallback`.
-- **O template só interpola caminhos** (`{{ a.b }}`), sem expressões nem formatação: o texto já vai pronto no estado (ex.: `<lista-estacoes>` guarda `alturaInstrumento: "1.5 m"`). A interpolação vira texto, não HTML — não precisa de `escaparHtml`.
+- **O template só interpola caminhos** (`{{ a.b }}`), sem expressões nem formatação: o texto já vai pronto no estado (ex.: `<lista-estacoes>` guarda `ligacao: "amarrada a Estação 1"`). A interpolação vira texto, não HTML — não precisa de `escaparHtml`.
 - **Listas:** `data-for="e in itens : id"` com chave (`: id`) reaproveita os nós entre renders — blocos `<details>` abertos continuam abertos quando a lista atualiza, o que o `innerHTML` antigo não conseguia. Listas aninhadas (`l in e.leituras`) e `<option>` dinâmicos (`data-bind='{"value":"e.id"}'`) funcionam.
 - **Métodos de entrada assíncronos:** `abrir()` dos diálogos agora é `async` e espera `whenLoaded()`, porque o template pode ainda não ter chegado; quem chama não precisa esperar. Referências a elementos do template (`querySelector`) só em `onLoad()`.
 - O estado vira JSON no atributo `data-state` do elemento: não guardar nele objetos grandes nem funções (ex.: o `capturador` continua propriedade comum).
