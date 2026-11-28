@@ -16,7 +16,7 @@ import { calcularCascoConvexo } from "../geo/casco_convexo.js";
 import { areaPoligonoMetros2 } from "../geo/geodesia.js";
 import { dividirEmMetros } from "../geo/segmentador_linha.js";
 import { calcularMatrizSaf } from "../geo/matriz_saf.js";
-import { agruparPlantasPorMetro, aplicarDadosNaPlanta } from "../dominio/saf.js";
+import { agruparPlantasPorMetro, aplicarDadosNaPlanta, resumirLinhas, descreverResumoLinhas } from "../dominio/saf.js";
 import { buscarCatalogo } from "../db/catalogo_nacional.js";
 import { obterRegistros } from "../db/biblioteca.js";
 import { especieDoRegistro } from "../dominio/biblioteca_unificada.js";
@@ -27,6 +27,7 @@ import "./captura_gps.js";
 import "./matriz_saf.js";
 import "./andar_gps.js";
 import "./dialogo_planta_metro.js";
+import "./resumo_metro.js";
 import "./editor_pontos_trilha.js";
 import "./dialogo_estacao.js";
 import "./dialogo_leitura.js";
@@ -35,6 +36,9 @@ import "./dialogo_historico_perimetro.js";
 import "./dialogo_importar_saf.js";
 
 const CHAVE_ULTIMO_LUGAR = "plantaterra:ultimo-lugar";
+
+// Mesma condição do css/estilo.css: aqui o detalhe do metro cabe ao lado da matriz.
+const TELA_LARGA = "(min-width: 900px) and (min-height: 560px)";
 
 /**
  * <painel-projeto data-id="...">: tela principal de um projeto — mapa +
@@ -84,6 +88,7 @@ export class PainelProjeto extends HTMLElement {
 
                 <div class="mapa-caixa">
                     <mapa-projeto class="mapa"></mapa-projeto>
+                    <resumo-metro hidden></resumo-metro>
                     <button type="button" class="mapa-ampliar" data-acao="mapa-ampliar" aria-label="Ampliar mapa" hidden>⤢</button>
                 </div>
 
@@ -792,6 +797,7 @@ export class PainelProjeto extends HTMLElement {
         this._irParaVista = async vista => {
             this.querySelector("dialogo-planta-metro")?.fechar();
             this.classList.remove("foco-metro");
+            this._esquecerMetro();
             if (this._vista === "saf" && vista !== "saf") {
                 this._pararAndar();
                 this.mapaElemento.limparLinhasDestacadas();
@@ -839,7 +845,10 @@ export class PainelProjeto extends HTMLElement {
             const nivel = evento.target.closest("[data-nivel]")?.dataset.nivel;
             if (!nivel) return;
             if (nivel === "projeto") this._irParaVista("entrada");
-            else this.querySelector("dialogo-planta-metro")?.fechar();
+            else {
+                this.querySelector("dialogo-planta-metro")?.fechar();
+                this._esquecerMetro();
+            }
         });
 
         entrada.querySelectorAll("[data-vista]").forEach(cartao => {
@@ -854,6 +863,11 @@ export class PainelProjeto extends HTMLElement {
             if (painelPlantas?.aberto) {
                 evento.preventDefault();
                 painelPlantas.fechar();
+                return;
+            }
+            if (this._metroEscolhido) {
+                evento.preventDefault();
+                this._esquecerMetro();
                 return;
             }
             if (this._editorPontos?.aberto) {
@@ -902,10 +916,13 @@ export class PainelProjeto extends HTMLElement {
             ? "nenhuma estação ainda"
             : `${this.estacoesComLeituras.length} estação(ões) · ${totalLeituras} leitura(s)`;
 
-        const totalLinhas = this.safsComLinhas.reduce((soma, { linhas }) => soma + linhas.length, 0);
-        resumo(".resumo-saf").textContent = this.safsComLinhas.length === 0
+        // A numeração das linhas recomeça em cada SAF: conta por SAF e soma.
+        const total = this.safsComLinhas.map(({ linhas }) => resumirLinhas(linhas))
+            .reduce((soma, r) => ({ linhas: soma.linhas + r.linhas, metros: soma.metros + r.metros }), { linhas: 0, metros: 0 });
+        const safs = this.safsComLinhas.length;
+        resumo(".resumo-saf").textContent = safs === 0
             ? "nenhum SAF importado ainda"
-            : `${this.safsComLinhas.length} SAF(s) · ${totalLinhas} linha(s)`;
+            : `${safs} ${safs === 1 ? "SAF" : "SAFs"} · ${descreverResumoLinhas(total)}`;
     }
 
     // ---------------- Vista SAF: matriz + modo "Andar" (docs/especificacao.md secoes 14.5a, 14.9) ----------------
@@ -963,8 +980,7 @@ export class PainelProjeto extends HTMLElement {
                 ${escaparHtml(saf.nome)}
             </button>`).join("");
 
-        const totalPlantas = atual.linhas.reduce((soma, l) => soma + (this._plantasPorLinhaEmEdicao.get(l.id)?.length ?? 0), 0);
-        info.textContent = `${atual.linhas.length} linha(s) · ${atual.matriz.linhasLogicas.length} fileira(s) · ${totalPlantas} planta(s)`;
+        info.textContent = descreverResumoLinhas(resumirLinhas(atual.linhas));
 
         matrizElemento.definir({ matriz: atual.matriz, plantasPorLinha: this._plantasPorLinhaEmEdicao });
 
@@ -980,10 +996,12 @@ export class PainelProjeto extends HTMLElement {
 
         this._aplicarMarcasAndar();
         this._renderizarMigalhas();
+        this._atualizarResumoMetro?.();
     }
 
     _escolherSaf(safId, { ajustarZoom = true } = {}) {
         if (safId === this._safAtualId) return;
+        this._esquecerMetro?.();
         this._safAtualId = safId;
         this._renderizarVistaSaf({ ajustarZoom });
         this._lembrarLugar();
@@ -1059,10 +1077,10 @@ export class PainelProjeto extends HTMLElement {
             this._escolherSaf(chip.dataset.safId);
         });
 
-        // Tocar numa célula abre o diálogo de planta e leva o mapa até o metro.
+        // Tocar numa célula leva o mapa até o metro e mostra o que há nele.
         matriz.addEventListener("metro-tocado", evento => {
             const { linhaId, indiceMetro, coordenada } = evento.detail;
-            this._abrirDialogoMetro(this._linhasDoSafEmEdicaoPorId.get(linhaId), indiceMetro, coordenada);
+            this._tocarMetro(this._linhasDoSafEmEdicaoPorId.get(linhaId), indiceMetro, coordenada);
         });
 
         this._aplicarMarcasAndar = () => {
@@ -1074,7 +1092,8 @@ export class PainelProjeto extends HTMLElement {
             const quadrado = this._quadradosSaf.find(q => q.chave === chave);
             if (!quadrado) return;
             andar.assumirControle();
-            this._abrirDialogoMetro(this._linhasDoSafEmEdicaoPorId.get(quadrado.linhaId), quadrado.indiceMetro, quadrado.coordenada);
+            this._escolherSaf(quadrado.safId, { ajustarZoom: false });
+            this._tocarMetro(this._linhasDoSafEmEdicaoPorId.get(quadrado.linhaId), quadrado.indiceMetro, quadrado.coordenada);
         };
     }
 
@@ -1113,35 +1132,91 @@ export class PainelProjeto extends HTMLElement {
     _wireDialogoPlanta() {
         const dialogo = this.querySelector("dialogo-planta-metro");
 
+        const resumo = this.querySelector("resumo-metro");
+        const nomeDaLinha = linha => linha.numero_linha !== null ? `Linha ${linha.numero_linha}` : linha.nome_original;
+        // Com mais de um SAF no projeto, "Linha 1" sozinho é ambíguo.
+        const prefixoDoSaf = linha => {
+            const saf = this.safsComLinhas.find(item => item.saf.id === linha.saf_id)?.saf;
+            return this.safsComLinhas.length > 1 && saf ? `${saf.nome} · ` : "";
+        };
+        const plantasDoMetroDe = (linha, indiceMetro) =>
+            (this._plantasPorLinhaEmEdicao.get(linha.id) ?? []).filter(p => p.indice_metro === indiceMetro);
+
+        // Marca o metro na matriz e mostra no mapa onde ele fica (rótulo + zoom de 1 m), para a pessoa se situar no campo.
+        const apontarMetro = (linha, indiceMetro) => {
+            const matriz = this.querySelector("matriz-saf");
+            matriz.selecionar(`${linha.id}|${indiceMetro}`);
+            // O mapa e a matriz mudam de tamanho por CSS: só depois disso centraliza e confere se a célula segue à vista.
+            requestAnimationFrame(() => {
+                this.mapaElemento.invalidarTamanho();
+                this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual, {
+                    rotulo: `${prefixoDoSaf(linha)}${nomeDaLinha(linha)} · metro ${indiceMetro}`,
+                    zoomMinimo: 21
+                });
+                matriz.garantirVisivel(`${linha.id}|${indiceMetro}`);
+            });
+        };
+
+        /*
+         * Tela pequena, em dois passos: o toque no metro mostra o resumo ao lado do mapa (a matriz continua, dá para
+         * seguir tocando em outros); o toque no resumo abre a edição. Na tela larga a edição abre direto ao lado.
+         */
+        this._tocarMetro = (linha, indiceMetro, coordenada) => {
+            if (window.matchMedia(TELA_LARGA).matches) {
+                this._abrirDialogoMetro(linha, indiceMetro, coordenada);
+                return;
+            }
+            if (coordenada) this._coordenadaMetroAtual = coordenada;
+            this._metroEscolhido = { linhaId: linha.id, indiceMetro, coordenada: this._coordenadaMetroAtual };
+            this._atualizarResumoMetro();
+            apontarMetro(linha, indiceMetro);
+        };
+
+        this._atualizarResumoMetro = () => {
+            if (!this._metroEscolhido) return;
+            const { linhaId, indiceMetro } = this._metroEscolhido;
+            const linha = this._linhasDoSafEmEdicaoPorId.get(linhaId);
+            if (!linha) {
+                this._esquecerMetro();
+                return;
+            }
+            resumo.definir({ titulo: nomeDaLinha(linha), metro: indiceMetro, plantas: plantasDoMetroDe(linha, indiceMetro) });
+            resumo.hidden = false;
+            this.classList.add("metro-escolhido");
+        };
+
+        /** Volta à matriz sem metro escolhido (o mapa recupera a largura toda). */
+        this._esquecerMetro = () => {
+            if (!this._metroEscolhido) return;
+            this._metroEscolhido = null;
+            resumo.hidden = true;
+            this.classList.remove("metro-escolhido");
+            this.querySelector("matriz-saf").selecionar(null);
+            this.mapaElemento.limparSegmentoAtivo();
+            requestAnimationFrame(() => this.mapaElemento.invalidarTamanho());
+        };
+
+        resumo.addEventListener("detalhe-solicitado", () => {
+            const { linhaId, indiceMetro, coordenada } = this._metroEscolhido;
+            this._abrirDialogoMetro(this._linhasDoSafEmEdicaoPorId.get(linhaId), indiceMetro, coordenada);
+        });
+
         this._abrirDialogoMetro = async (linha, indiceMetro, coordenada) => {
             this._linhaAtualParaPlanta = linha;
             this._metroEmEdicao = indiceMetro;
             if (coordenada) this._coordenadaMetroAtual = coordenada;
 
-            const rotuloLinha = linha.numero_linha !== null ? `Linha ${linha.numero_linha}` : linha.nome_original;
-            // Com mais de um SAF no projeto, "Linha 1" sozinho é ambíguo.
-            const safDaLinha = this.safsComLinhas.find(({ saf }) => saf.id === linha.saf_id)?.saf;
-            const prefixoSaf = this.safsComLinhas.length > 1 && safDaLinha ? `${safDaLinha.nome} · ` : "";
-
-            this.querySelector("matriz-saf").selecionar(`${linha.id}|${indiceMetro}`);
-
-            // Modo foco: o mapa mantém o tamanho e o painel de plantas ocupa o resto (a matriz some até fechar),
+            // Modo foco: o painel de plantas ocupa o resto da tela (na tela pequena a matriz some até fechar),
             // para a pessoa ver onde está o metro sem o painel cobrir o mapa.
             this.classList.add("foco-metro");
-            this._rotuloMetroAberto = `${rotuloLinha} · metro ${indiceMetro}`;
+            this._rotuloMetroAberto = `${nomeDaLinha(linha)} · metro ${indiceMetro}`;
+            apontarMetro(linha, indiceMetro);
 
-            // O mapa mostra onde fica este metro (rótulo + zoom de 1 m), para a pessoa se situar no campo.
-            this.mapaElemento.destacarSegmentoAtivo(this._coordenadaMetroAtual, {
-                rotulo: `${prefixoSaf}${rotuloLinha} · metro ${indiceMetro}`,
-                zoomMinimo: 21
-            });
-
-            // A biblioteca é global e pode ter mudado em outra tela: relê a cada abertura.
-            const plantasDoMetro = (this._plantasPorLinhaEmEdicao.get(linha.id) ?? []).filter(p => p.indice_metro === indiceMetro);
+            const plantasDoMetro = plantasDoMetroDe(linha, indiceMetro);
             // As espécies dessas plantas (capa e nome científico dos cards) vêm da biblioteca, que é global e pode ter mudado.
             const registros = await obterRegistros(plantasDoMetro.map(p => p.especie_id));
             await dialogo.abrir({
-                titulo: `${prefixoSaf}${rotuloLinha} — metro ${indiceMetro}`,
+                titulo: `${prefixoDoSaf(linha)}${nomeDaLinha(linha)} — metro ${indiceMetro}`,
                 plantas: plantasDoMetro,
                 especies: new Map([...registros].map(([id, registro]) => [id, especieDoRegistro(registro)]))
             });
@@ -1150,6 +1225,9 @@ export class PainelProjeto extends HTMLElement {
 
         dialogo.addEventListener("fechado", () => {
             this.classList.remove("foco-metro");
+            // Voltando para o resumo: ele reflete o que acabou de ser editado.
+            this._atualizarResumoMetro();
+            requestAnimationFrame(() => this.mapaElemento.invalidarTamanho());
             this._renderizarMigalhas();
             // Se o GPS estava guiando, a matriz volta já na posição certa.
             const andar = this.querySelector("andar-gps");

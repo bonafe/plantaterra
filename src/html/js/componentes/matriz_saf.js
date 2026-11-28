@@ -8,6 +8,7 @@ import { escaparHtml } from "./util_dom.js";
  * Entrada:
  *   definir({ matriz, plantasPorLinha })  matriz = resultado de calcularMatrizSaf;
  *                                         plantasPorLinha = Map(linhaId → plantas[])
+ *   garantirVisivel(chave)  rola só se a célula saiu da área visível
  *   marcarProximos(chavesPerto, chaveMaisProximo)  destaca células (chave "linhaId|indiceMetro") e a coluna/fileira da mais próxima
  *   selecionar(chave)                     marca a célula tocada (fica até outra ser escolhida)
  *   rolarPara(chave)                      centraliza a célula (rolagem suave)
@@ -122,6 +123,18 @@ export class MatrizSaf extends HTMLElement {
     selecionar(chave) {
         this._chaveSelecionada = chave;
         this._celulas?.forEach((celula, c) => celula.classList.toggle("quadrado-metro-selecionado", c === chave));
+    }
+
+    /** Rola só se a célula saiu da área visível (ex: a matriz encolheu depois do toque). */
+    garantirVisivel(chave) {
+        const celula = this._celulas?.get(chave);
+        if (!celula || !this._wrapper.offsetParent) return;
+        const c = celula.getBoundingClientRect();
+        const w = this._wrapper.getBoundingClientRect();
+        const rotulo = this._grade.querySelector(".matriz-saf-rotulo")?.getBoundingClientRect().width ?? 0;
+        const cabecalho = this._grade.querySelector(".matriz-saf-cabecalho")?.getBoundingClientRect().height ?? 0;
+        const visivel = c.left >= w.left + rotulo && c.right <= w.right && c.top >= w.top + cabecalho && c.bottom <= w.bottom;
+        if (!visivel) this.rolarPara(chave);
     }
 
     rolarPara(chave) {

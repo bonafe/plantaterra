@@ -360,6 +360,82 @@ painel-projeto.vista-saf-ativa .mapa-caixa {
     min-height: 150px;
 }
 
+/*
+ * Tela pequena, metro tocado: mapa em 2/3 e o resumo das plantas (<resumo-metro>) em 1/3 ao lado; a matriz segue
+ * embaixo. Um pouco mais alto que o normal para o resumo caber.
+ */
+painel-projeto.vista-saf-ativa.metro-escolhido:not(.mapa-ampliado):not(.foco-metro) .mapa-caixa {
+    flex-basis: 30dvh;
+}
+
+resumo-metro {
+    display: flex;
+    flex: 0 0 33.333%;
+    min-width: 0;
+}
+
+resumo-metro[hidden] {
+    display: none;
+}
+
+.resumo-metro-botao {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: none;
+    border-left: 2px solid var(--cor-primaria);
+    background: var(--cor-fundo-pagina);
+    color: var(--cor-texto);
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.resumo-metro-conteudo {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    gap: 6px;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    padding: 6px 8px;
+}
+
+.resumo-metro-titulo strong,
+.resumo-metro-planta strong,
+.resumo-metro-planta small {
+    display: block;
+}
+
+.resumo-metro-planta {
+    padding-top: 6px;
+    border-top: 1px solid var(--cor-borda);
+}
+
+.resumo-metro-planta small,
+.resumo-metro-vazio {
+    color: var(--cor-texto-suave);
+}
+
+.resumo-metro-acao {
+    flex: 0 0 auto;
+    padding: 12px 8px;
+    background: var(--cor-primaria);
+    color: #fff;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* Com a edição aberta (ou na tela larga) o resumo é redundante: o detalhe completo está na tela. */
+painel-projeto.foco-metro resumo-metro {
+    display: none;
+}
+
 painel-projeto.vista-saf-ativa.mapa-ampliado .mapa-caixa {
     flex: 0 0 62dvh;
 }

@@ -443,6 +443,10 @@ export class MapaProjeto extends HTMLElement {
         this.visao.animate({ center: centro, zoom, duration: 250 });
     }
 
+    limparSegmentoAtivo() {
+        this.camadaSegmentoAtivo.clear();
+    }
+
     // ---- Modo "Andar na agrofloresta" (docs/especificacao.md secao 14.9) ----
 
     /** Ponto azul na posição do GPS, com um círculo do tamanho da precisão informada. */

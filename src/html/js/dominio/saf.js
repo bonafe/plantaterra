@@ -45,6 +45,23 @@ export function parsearNomeLinha(nomeOriginal) {
 }
 
 /**
+ * Totais para os resumos: { linhas, metros }. Trechos com o mesmo número ("Linha 3 Norte" e "Linha 3 Sul") contam
+ * como uma linha só, como na matriz; os metros são os calculados da geometria (secao 14.2).
+ */
+export function resumirLinhas(linhas) {
+    return {
+        linhas: new Set(linhas.map(l => l.numero_linha ?? `id${l.id}`)).size,
+        metros: linhas.reduce((soma, l) => soma + (l.comprimento_calculado_m ?? 0), 0)
+    };
+}
+
+/** "15 linhas · 132,5 m lineares" */
+export function descreverResumoLinhas({ linhas, metros }) {
+    return `${linhas} ${linhas === 1 ? "linha" : "linhas"} · ` +
+        `${metros.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} m lineares`;
+}
+
+/**
  * Agrupa uma lista de PlantaLinha por indice_metro.
  * Retorna um Map<indiceMetro, PlantaLinha[]>.
  */

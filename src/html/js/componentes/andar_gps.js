@@ -170,7 +170,7 @@ export class AndarGps extends HTMLElement {
         } else if (!estado.seguindo) {
             this._textoEstado.textContent = "✋ Você está no controle. Toque em \"Voltar a seguir\" para o GPS guiar de novo.";
         } else if (estado.distanciaM > AndarGps.RAIO_ATUAR_M) {
-            this._textoEstado.textContent = `📡 GPS ligado, mas a fileira mais próxima está a ${estado.distanciaM.toFixed(0)} m.`;
+            this._textoEstado.textContent = `📡 GPS ligado, mas a linha mais próxima está a ${estado.distanciaM.toFixed(0)} m.`;
         } else {
             const precisao = Number.isFinite(estado.posicao.precisao) ? `±${Math.round(estado.posicao.precisao)} m` : "precisão desconhecida";
             this._textoEstado.textContent = `📍 Seguindo o GPS (${precisao})` +
